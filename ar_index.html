@@ -7,6 +7,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
 
+  <!-- A-Frame & AR.js (완벽한 마커 기반 3D 공간 고정용) -->
+  <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -911,7 +915,7 @@
 
     // 카메라 영상 조도/색조 분석을 통해 책상 환경에 어울리는 아키타입 테마 자동 매핑
     function analyzeDeskEnvironment() {
-      const video = document.getElementById('cam-video');
+      const video = document.querySelector('video');
       
       // 카메라 스트림이 꺼져 있거나 시뮬레이션 모드일 경우 예외 처리 (무작위)
       if (!video || video.style.display === 'none' || video.readyState !== 4) {
@@ -1119,7 +1123,8 @@
     let parallaxX = 0, parallaxY = 0;
     let targetParallaxX = 0, targetParallaxY = 0;
 
-    // 가상 SLAM 절대 앵커 변수 (카메라 이동 절대 고정용)
+    // 가상 SLAM 절대 앵커 및 AR.js 마커 연동 변수
+    let markerVisible = false;
     let isAnchored = false;
     let anchorTouchX = 0;
     let anchorTouchY = 0;
@@ -1338,57 +1343,86 @@
       parallaxX += (targetParallaxX - parallaxX) * 0.08;
       parallaxY += (targetParallaxY - parallaxY) * 0.08;
       
-      if (cityStage.classList.contains('show')) {
-        // 실시간 자이로 작동 유무 및 각도 수치를 하단 HUD에 출력 (디버그 모니터링 시각화)
+      const cityStage = document.getElementById('city-stage');
+      const cityGrid = document.getElementById('city-grid');
+      
+      if (cityStage && cityStage.classList.contains('show')) {
         const hudStats = document.getElementById('hud-city-stats');
-        if (hudStats) {
-          hudStats.textContent = `GYRO: ${gyroActive ? 'ON' : 'OFF'} | B:${currentBeta.toFixed(0)} G:${currentGamma.toFixed(0)} | ${isAnchored ? 'ANCHOR' : 'STANDBY'}`;
-        }
-
-        if (isAnchored && gyroActive) {
-          // 폰 움직임 각도 변위 계산
-          const dAlpha = getAngleDiff(currentAlpha, anchorAlpha);
-          const dBeta = currentBeta - anchorBeta;
-
-          // 1. Frustum Culling: 화각 한계를 벗어나 비추지 않을 때는 완전히 페이드아웃하여 투명화 (안 보이게 조치)
-          const absDAlpha = Math.abs(dAlpha);
-          const absDBeta = Math.abs(dBeta);
-
-          // 각도가 극단적으로 꺾였을 때 탄젠트 폭주/폭발 예외 가드 및 즉시 숨김
-          if (absDAlpha > 80 || absDBeta > 80) {
-            cityStage.style.opacity = 0;
-            cityStage.style.pointerEvents = 'none';
-            requestAnimationFrame(renderLoop);
-            return;
+        
+        if (markerVisible) {
+          const scene = document.querySelector('a-scene');
+          if (scene && scene.camera) {
+            const camera = scene.camera; // THREE.Camera
+            const anchor = document.getElementById('ar-anchor-point');
+            
+            if (anchor && anchor.object3D) {
+              // THREE.js 객체 획득 및 MatrixWorld 갱신
+              const THREE = window.THREE || (window.AFRAME && window.AFRAME.THREE);
+              if (THREE) {
+                const position = new THREE.Vector3();
+                anchor.object3D.updateMatrixWorld(true);
+                position.setFromMatrixPosition(anchor.object3D.matrixWorld);
+                
+                // 정규화 뷰포트 공간 (-1 ~ 1)로 가상 3D 좌표 투영
+                const tempV = position.clone();
+                tempV.project(camera);
+                
+                // 스크린 픽셀 좌표 변환
+                const screenX = (tempV.x * 0.5 + 0.5) * window.innerWidth;
+                const screenY = (-(tempV.y * 0.5) + 0.5) * window.innerHeight;
+                
+                // 카메라와 마커 간의 실제 물리 거리 측정
+                const cameraPosition = new THREE.Vector3();
+                cameraPosition.setFromMatrixPosition(camera.matrixWorld);
+                const distance = position.distanceTo(cameraPosition);
+                
+                // 마커의 회전 정보 오일러 앵글 추출
+                const rotation = new THREE.Euler();
+                rotation.setFromRotationMatrix(anchor.object3D.matrixWorld);
+                
+                const rotX = rotation.x * 180 / Math.PI;
+                const rotY = rotation.y * 180 / Math.PI;
+                const rotZ = rotation.z * 180 / Math.PI;
+                
+                // 거리 비례 다이나믹 스케일링 계산 (약 4.0 유닛을 기준 물리 거리로 설정)
+                const baseDistance = 4.0;
+                const distScale = Math.max(0.15, Math.min(2.5, baseDistance / distance));
+                const finalScale = ABSOLUTE_SCALE * distScale;
+                
+                // 스크린 중앙 대비 오프셋
+                const panX = screenX - (window.innerWidth / 2);
+                const panY = screenY - (window.innerHeight / 2);
+                
+                // 디오라마를 마커 평면에 수직 기립되도록 눕힘 각도(rotateX(90)) 연동 적용
+                cityGrid.style.transform = `
+                  translate3d(${panX}px, ${panY}px, ${-distance * 120}px)
+                  rotateX(${90 + rotX}deg)
+                  rotateY(${rotY}deg)
+                  rotateZ(${rotZ}deg)
+                  scale3d(${finalScale}, ${finalScale}, ${finalScale})
+                `;
+                
+                if (hudStats) {
+                  hudStats.textContent = `AR: TRACKED | DIST: ${distance.toFixed(2)} | SCALE: ${finalScale.toFixed(2)}`;
+                }
+              }
+            }
           }
-
-          // 카메라 화각(수평 60도, 수직 75도)의 하프 앵커를 기준으로 부드러운 불투명도 페이드
-          const fadeStartAlpha = 24; // 24도부터 페이드아웃 시작
-          const fadeLimitAlpha = 32; // 32도 이후로는 완전 소멸
-          const fadeStartBeta = 30;  // 30도부터 페이드아웃 시작
-          const fadeLimitBeta = 38;  // 38도 이후로는 완전 소멸
-
-          let opacityAlpha = 1.0;
-          if (absDAlpha > fadeStartAlpha) {
-            opacityAlpha = Math.max(0, 1 - (absDAlpha - fadeStartAlpha) / (fadeLimitAlpha - fadeStartAlpha));
-          }
-
-          let opacityBeta = 1.0;
-          if (absDBeta > fadeStartBeta) {
-            opacityBeta = Math.max(0, 1 - (absDBeta - fadeStartBeta) / (fadeLimitBeta - fadeStartBeta));
-          }
-
-          const finalOpacity = opacityAlpha * opacityBeta;
-          cityStage.style.opacity = finalOpacity;
-          cityStage.style.pointerEvents = finalOpacity <= 0 ? 'none' : 'auto';
-
-          updateStageTransform();
         } else {
-          // 앵커 고정 전이거나 데스크톱 모드일 때는 기본 100% 불투명도
-          cityStage.style.opacity = 1.0;
-          cityStage.style.pointerEvents = 'auto';
+          // 데스크톱 / 마커 유실 시 기본 오빗 및 드래그 제스처 보간 작동
+          const finalPitch = pitch + (parallaxY * 12);
+          const finalYaw = yaw + (parallaxX * 12);
+          cityGrid.style.transform = `
+            translate3d(${panX}px, ${panY}px, -450px)
+            rotateX(${finalPitch}deg)
+            rotateZ(${finalYaw}deg)
+            scale3d(${ABSOLUTE_SCALE}, ${ABSOLUTE_SCALE}, ${ABSOLUTE_SCALE})
+          `;
+          
+          if (hudStats) {
+            hudStats.textContent = `AR: SEARCHING MARKER | DESKTOP MODE`;
+          }
         }
-        updateGridTransform();
       }
       requestAnimationFrame(renderLoop);
     }
@@ -1633,165 +1667,97 @@
 
 
     /* ════════════════════════════════════════════
-       AR 카메라 라이프사이클 관리
+       AR 카메라 라이프사이클 관리 (A-Frame & AR.js 개편)
+       ※ 외부 WebGL 렌더러의 버그를 회피하며, CSS 3D 디오라마를 마커 위에 정밀 투사
     ════════════════════════════════════════════ */
-    let cameraStream = null;
+    let aSceneEl = null;
 
-    async function startAR() {
+    function startAR() {
       const startBtn = document.getElementById('btn-start');
-      startBtn.textContent = '카메라 연결 검증 중...';
+      startBtn.textContent = 'AR 엔진 초기화 중...';
       startBtn.disabled = true;
 
-      // ⚠️ 안전장치: 혹시 이전에 사용하던 스트림이 남아있다면 완벽하게 릴리즈 처리하여 장치 락 방지
-      if (cameraStream) {
-        try {
-          cameraStream.getTracks().forEach(track => track.stop());
-        } catch (e) {
-          console.warn("이전 카메라 스트림 해제 실패:", e);
-        }
-        cameraStream = null;
-      }
+      // 1. 기존 스트림이나 씬 잔재 정리
+      stopAR();
 
       try {
         // 보안 컨텍스트 체크 (HTTPS 필수)
         if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-          throw new Error('SecurityError: 카메라 접근은 HTTPS 환경 또는 localhost에서만 허용됩니다. 현재 프로토콜: ' + window.location.protocol);
+          throw new Error('SecurityError: 카메라 접근은 HTTPS 환경 또는 localhost에서만 허용됩니다.');
         }
 
-        // 1단계: 후면 카메라 및 일반적인 비디오 획득 시도 (PC 및 웹 브라우저 전체 대응용)
-        try {
-          cameraStream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: { ideal: 'environment' }
-            },
-            audio: false
-          });
-        } catch (err1) {
-          console.warn("1단계 카메라 획득 실패, 대기 후 기본 웹캠 대체 시도:", err1);
-          // 브라우저가 카메라 하드웨어 리소스를 해제(release)할 시간을 주기 위해 300ms 대기
-          await new Promise(resolve => setTimeout(resolve, 300));
-
-          // 2단계: facingMode 상세 제약 없이 비디오 획득 (PC 환경 등 대응)
-          cameraStream = await navigator.mediaDevices.getUserMedia({
-            video: true,
-            audio: false
-          });
-        }
-
-        const video = document.getElementById('cam-video');
-        video.srcObject = cameraStream;
-
-        // 카메라 방향 상태 획득 및 미러 처리 설정
-        const track = cameraStream.getVideoTracks()[0];
-        const settings = track.getSettings();
-        if (settings && settings.facingMode === 'environment') {
-          video.classList.add('rear');
-        } else {
-          video.classList.remove('rear');
-        }
-
-        // 비디오 display 요소를 먼저 block으로 변경하여 재생 거부를 방지
-        video.style.display = 'block';
-
-        // play() 호출 시 브라우저 정책(오토플레이 정책) 예외 방어적 캐치
-        try {
-          await video.play();
-        } catch (playErr) {
-          console.warn("video.play() 호출 거부됨 (사용자 동작 대기):", playErr);
-        }
-
-        // 씬 구성 및 HUD 활성화
-        document.getElementById('splash').classList.add('gone');
-        document.getElementById('scanning-overlay').style.display = 'block';
-        document.getElementById('ar-ui').classList.add('on');
-        document.getElementById('crosshair').classList.add('show', 'pulse');
+        // 2. 동적으로 a-scene DOM 생성 및 설정 (오토플레이 권한 자동 승인 콜스택 내부)
+        aSceneEl = document.createElement('a-scene');
+        aSceneEl.setAttribute('embedded', '');
+        aSceneEl.setAttribute('arjs', 'sourceType: webcam; debugUIEnabled: false; trackingMethod: best; detectionMode: mono_and_matrix;');
+        aSceneEl.setAttribute('vr-mode-ui', 'enabled: false');
         
-        setStatus('📡 책상 바닥을 향하고 화면을 탭하여 고정하세요');
+        // CSS 3D 요소를 가리지 않도록 WebGL 레이어는 z-index를 2로 두고 투명하게(opacity 0.001) 설정
+        // 비디오 스트림 자체는 AR.js가 z-index가 낮은 별도 DOM 비디오로 삽입하므로 투명도에 영향을 받지 않고 정상 출력됨!
+        aSceneEl.style.cssText = 'position: fixed; inset: 0; z-index: 2; pointer-events: none; opacity: 0.001;';
 
-        // 첫 탭/클릭으로 도시 투사 시작 바인딩 (책상 평면 앵커 고정)
-        const triggerAnchor = (e) => {
-          if (isAnchored) return;
-          // UI 조작 패널이나 종료 버튼을 탭한 경우 버블링 차단
-          if (e.target.closest('#btn-exit') || e.target.closest('#dashboard') || e.target.closest('#btn-dev-toggle')) return;
+        const markerEl = document.createElement('a-marker');
+        markerEl.setAttribute('preset', 'hiro');
+        markerEl.id = 'ar-marker';
 
-          // 터치 혹은 클릭한 실제 화면 위치 캡처
-          let clientX = window.innerWidth / 2;
-          let clientY = window.innerHeight - 240; // 기본 오프셋 센터
+        const anchorEl = document.createElement('a-entity');
+        anchorEl.id = 'ar-anchor-point';
+        anchorEl.setAttribute('position', '0 0 0');
+        anchorEl.setAttribute('rotation', '0 0 0');
 
-          if (e.touches && e.touches.length > 0) {
-            clientX = e.touches[0].clientX;
-            clientY = e.touches[0].clientY;
-          } else if (e.clientX !== undefined) {
-            clientX = e.clientX;
-            clientY = e.clientY;
+        markerEl.appendChild(anchorEl);
+        aSceneEl.appendChild(markerEl);
+
+        const cameraEl = document.createElement('a-entity');
+        cameraEl.setAttribute('camera', '');
+        aSceneEl.appendChild(cameraEl);
+
+        // 바디에 삽입하여 AR.js 시동 걸기
+        document.body.appendChild(aSceneEl);
+
+        // 마커 감지 리스너 바인딩
+        markerEl.addEventListener('markerFound', () => {
+          markerVisible = true;
+          const cityStage = document.getElementById('city-stage');
+          if (cityStage) {
+            cityStage.classList.add('show');
+            cityStage.style.opacity = 1;
+            // 아키타입 테마를 매번 처음 인식할 때 공간감을 극대화하기 위해 프린팅 프로세스 트리거
+            start3DPrinting();
           }
+          setStatus('🎯 마커 정렬됨: 디오라마 가동 중');
+        });
 
-          document.getElementById('scanning-overlay').style.display = 'none';
-          document.getElementById('crosshair').classList.remove('pulse', 'show');
-          cityStage.classList.add('show');
-          
-          // 터치한 위치를 가상 바닥 앵커 좌표로 변환 (화면 중심을 원점으로 한 3D XY 평면 보정)
-          anchorTouchX = clientX - (window.innerWidth / 2);
-          anchorTouchY = clientY - (window.innerHeight / 2);
-          
-          panX = anchorTouchX;
-          panY = anchorTouchY;
-          
-          // 자이로 기준 회전 고정
-          anchorAlpha = currentAlpha;
-          anchorBeta = currentBeta;
-          anchorGamma = currentGamma;
-          anchorYaw = yaw; // 현재 yaw(기본값 -15) 기준 고정
-          isAnchored = true;
+        markerEl.addEventListener('markerLost', () => {
+          markerVisible = false;
+          const cityStage = document.getElementById('city-stage');
+          if (cityStage) {
+            cityStage.style.opacity = 0;
+          }
+          setStatus('🔍 책상의 마커(Hiro)를 비추세요');
+        });
 
-          updateStageTransform();
+        // 3. 렌더러 타겟 로드 완료 시 화면 제어권 인수
+        aSceneEl.addEventListener('render-target-loaded', () => {
+          document.getElementById('splash').classList.add('gone');
+          document.getElementById('scanning-overlay').style.display = 'block';
+          document.getElementById('ar-ui').classList.add('on');
+          document.getElementById('crosshair').classList.add('show', 'pulse');
           
-          analyzeDeskEnvironment(); // 책상 환경 조도를 분석해 어울리는 테마 자동 적용
+          setStatus('🔍 책상 위의 Hiro 마커를 카메라로 비추세요');
           
-          // 이벤트 제거
-          window.removeEventListener('click', triggerAnchor);
-          window.removeEventListener('touchstart', triggerAnchor);
-        };
-
-        // 클릭 즉시 스폰되는 것을 방지하기 위해 100ms 버블링 딜레이 후 리스너 등록
-        setTimeout(() => {
-          window.addEventListener('click', triggerAnchor);
-          window.addEventListener('touchstart', triggerAnchor);
-        }, 100);
+          // 카메라 조도 분석을 위해 1.8초 후 1회 환경 정보 갱신
+          setTimeout(() => {
+            analyzeDeskEnvironment();
+          }, 1800);
+        });
 
       } catch (err) {
-        console.error("카메라 연결 실패 상세 로그:", err);
+        console.error("WebAR 엔진 구동 실패:", err);
         startBtn.textContent = '📷 AR 카메라 연결 시작';
         startBtn.disabled = false;
         
-        // 상세 에러 진단 메시지 구성
-        let errorMsg = '카메라 장치 연동에 실패했습니다.';
-        let debugDetail = `에러명: ${err.name}\n메세지: ${err.message || '없음'}\n프로토콜: ${window.location.protocol}\nUserAgent: ${navigator.userAgent}`;
-        
-        if (err.name === 'NotAllowedError') {
-          errorMsg = '카메라 사용 권한이 거부되었습니다.\n\n[조치 방법]\n1. 브라우저 주소창 좌측의 설정 버튼(자물쇠 모양 등)을 누르고 카메라 허용을 활성화하세요.\n2. Windows 설정(개인 정보 -> 카메라) 또는 모바일 설정에서 브라우저의 카메라 앱 권한이 켜져 있는지 확인해 주세요.';
-        } else if (err.name === 'NotReadableError') {
-          errorMsg = '카메라가 이미 다른 프로세스(예: Zoom, Teams, Discord, OBS, 또는 다른 브라우저 탭)에서 사용 중입니다.\n\n[조치 방법]\n카메라를 켜고 있는 다른 백그라운드 프로그램이나 웹 브라우저 탭을 완전히 종료한 뒤 다시 시도해 주세요.';
-        } else if (err.name === 'NotFoundError') {
-          errorMsg = '기기에 연결된 유효한 카메라 하드웨어(웹캠/카메라 모듈)를 찾을 수 없습니다.';
-        } else if (err.name === 'OverconstrainedError') {
-          errorMsg = '브라우저가 요구하는 카메라 사양을 기기 하드웨어가 지원하지 못합니다.';
-        } else if (err.message && err.message.includes('SecurityError')) {
-          errorMsg = '보안 제한으로 인해 카메라를 시작할 수 없습니다. 반드시 https:// 주소로 접속해 주세요.';
-        }
-        
-        alert(`${errorMsg}\n\n[디버그 진단 정보]\n${debugDetail}`);
-        
-        // 기기에 카메라가 없거나 완전히 실패한 경우 시뮬레이션 모드로 진입 제안
-        const goSim = confirm('카메라를 획득하지 못했습니다. 카메라 없이 가상 시뮬레이션 모드로 시작할까요?');
-        if (goSim) {
-          document.getElementById('splash').classList.add('gone');
-          document.getElementById('ar-ui').classList.add('on');
-          cityStage.classList.add('show');
-          panX = 0; panY = 0;
-          updateStageTransform();
-          analyzeDeskEnvironment(); // 카메라 오프라인 분석 (무작위)
-        }
+        alert(`AR 구동 에러:\n${err.message}\n\n모바일 정식 브라우저(Safari, Chrome)와 HTTPS 환경인지 확인해 주세요.`);
       }
     }
 
@@ -1799,18 +1765,30 @@
       // 애니메이션 클리어
       if (printAnimId) cancelAnimationFrame(printAnimId);
       if (wobbleAnimId) cancelAnimationFrame(wobbleAnimId);
-      
-      // 카메라 스트림 정리
-      if (cameraStream) {
-        cameraStream.getTracks().forEach(track => track.stop());
-        cameraStream = null;
-      }
 
       isPrinting = false;
       wobbleAnimId = null;
-      isAnchored = false;
-      initialBeta = null;
-      initialGamma = null;
+      markerVisible = false;
+
+      // 동적 A-Frame 씬 제거 및 카메라 자원 완전 해제
+      if (aSceneEl) {
+        try {
+          // AR.js 비디오 태그 등 잔재 DOM 제거
+          document.querySelectorAll('video').forEach(v => {
+            if (v.srcObject) {
+              v.srcObject.getTracks().forEach(track => track.stop());
+            }
+            v.remove();
+          });
+        } catch(e) { console.warn("비디오 스트림 정리 경고:", e); }
+        
+        try {
+          if (aSceneEl.parentNode) {
+            aSceneEl.parentNode.removeChild(aSceneEl);
+          }
+        } catch (e) { console.warn("a-scene 정리 경고:", e); }
+        aSceneEl = null;
+      }
 
       // UI 초기화
       document.body.classList.remove('night-mode');
@@ -1827,17 +1805,21 @@
         btnRain.textContent = '☀️ 날씨: 맑음';
       }
 
-      const video = document.getElementById('cam-video');
-      video.style.display = 'none';
-      video.srcObject = null;
-
-      cityStage.classList.remove('show');
+      // AR UI 초기화
+      const cityStage = document.getElementById('city-stage');
+      if (cityStage) {
+        cityStage.classList.remove('show');
+        cityStage.style.opacity = 0;
+      }
+      
       document.getElementById('ar-ui').classList.remove('on');
       document.getElementById('splash').classList.remove('gone');
 
       const startBtn = document.getElementById('btn-start');
-      startBtn.textContent = '📷 AR 카메라 연결 시작';
-      startBtn.disabled = false;
+      if (startBtn) {
+        startBtn.textContent = '📷 AR 카메라 연결 시작';
+        startBtn.disabled = false;
+      }
     }
   </script>
 </body>
