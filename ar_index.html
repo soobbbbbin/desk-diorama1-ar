@@ -89,6 +89,14 @@
       border-radius: 14px;
     }
 
+    /* 빌딩 루트 3D 렌더링 컨텍스트 유지 */
+    #buildings-root {
+      position: absolute;
+      inset: 0;
+      transform-style: preserve-3d;
+      pointer-events: none;
+    }
+
     /* 3D 건물 스타일 */
     .building {
       position: absolute;
@@ -101,7 +109,7 @@
     .b-face {
       position: absolute;
       top: 0; left: 0;
-      backface-visibility: hidden;
+      backface-visibility: visible; /* 뒷면 컬링 해제하여 3D 면의 투명화 원천 방지 */
       transform-style: preserve-3d;
       transition: background 0.4s, border 0.4s, box-shadow 0.4s;
     }
@@ -334,6 +342,22 @@
       box-shadow: 0 0 40px rgba(0, 120, 255, 0.6);
     }
     .btn-premium:active { transform: scale(0.96); }
+
+    /* 카카오톡 등 인앱 브라우저 경고 배너 */
+    #inapp-warning {
+      display: none;
+      background: rgba(239, 68, 68, 0.2);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      color: #fca5a5;
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-size: 12px;
+      text-align: center;
+      line-height: 1.5;
+      margin-bottom: 24px;
+      max-width: 325px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    }
 
     /* ══════════════════════════════
        AR 오버레이 UI & 가상 HUD
@@ -700,6 +724,15 @@
       <div class="s-icon">🏙️</div>
     </div>
     <div class="s-title">Desk Diorama AR</div>
+    
+    <!-- 카카오톡 등 인앱 경고 메세지 -->
+    <div id="inapp-warning">
+      ⚠️ <strong>인앱 브라우저 경고</strong><br>
+      현재 카카오톡, 인스타, 라인 등의 인앱 브라우저로 접속 중입니다.<br>
+      카메라 권한 정책으로 인해 화면이 안 뜰 수 있으니,<br>
+      <strong>우측 상단 메뉴 -> 다른 브라우저(Safari, Chrome)로 열기</strong>를 권장합니다.
+    </div>
+
     <div class="s-sub">인쇄물이나 책상 위의 공간을 스캔하세요.<br>그 위에 가상 도시의 홀로그램을 투사합니다.</div>
     <button class="btn-premium" id="btn-start" onclick="startAR()">📷 AR 카메라 연결 시작</button>
   </div>
@@ -765,6 +798,15 @@
       const b = Math.max(0, Math.min(255, (n&0xff) + pct));
       return '#' + [r,g,b].map(x=>x.toString(16).padStart(2,'0')).join('');
     }
+
+    // 인앱 브라우저 체크
+    function checkInAppBrowser() {
+      const ua = navigator.userAgent.toLowerCase();
+      if (ua.includes('kakaotalk') || ua.includes('line') || ua.includes('instagram') || ua.includes('fb') || ua.includes('messenger') || ua.includes('everytime')) {
+        document.getElementById('inapp-warning').style.display = 'block';
+      }
+    }
+    checkInAppBrowser();
 
     // 아키타입 변경
     function switchArchetype(key) {
@@ -849,7 +891,7 @@
             transform: rotateX(-90deg) scaleY(0.001);
           `;
 
-          // 3. 앞면 (Front Face)
+          // 3. 앞면 (Front Face) - translate3d로 명시적 깊이(Z) 부여
           const front = document.createElement('div');
           front.className = 'b-face front';
           front.style.cssText = `
@@ -893,13 +935,13 @@
           winRight.className = 'window-layer';
           right.appendChild(winRight);
 
-          // 7. 지붕 (Top Face)
+          // 7. 지붕 (Top Face) - rotateX(-90deg)를 적용해 보이는 면이 하늘을(위쪽) 보게 정렬
           const top = document.createElement('div');
           top.className = 'b-face top';
           top.style.cssText = `
             width: ${ww}px; height: ${d}px;
             top: -${d/2}px;
-            transform: rotateX(90deg);
+            transform: rotateX(-90deg);
           `;
 
           // 8. 안테나 (Antenna)
@@ -1356,6 +1398,11 @@
       startBtn.disabled = true;
 
       try {
+        // 보안 컨텍스트 체크 (HTTPS 필수)
+        if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+          throw new Error('SecurityError: 카메라 접근은 HTTPS 환경 또는 localhost에서만 허용됩니다. 현재 프로토콜: ' + window.location.protocol);
+        }
+
         // 1단계: 후면 카메라 및 일반적인 비디오 획득 시도 (PC 및 웹 브라우저 전체 대응용)
         try {
           cameraStream = await navigator.mediaDevices.getUserMedia({
@@ -1365,7 +1412,10 @@
             audio: false
           });
         } catch (err1) {
-          console.warn("1단계 카메라 획득 실패, 기본 웹캠으로 대체 시도:", err1);
+          console.warn("1단계 카메라 획득 실패, 대기 후 기본 웹캠 대체 시도:", err1);
+          // 브라우저가 카메라 하드웨어 리소스를 해제(release)할 시간을 주기 위해 300ms 대기
+          await new Promise(resolve => setTimeout(resolve, 300));
+
           // 2단계: facingMode 상세 제약 없이 비디오 획득 (PC 환경 등 대응)
           cameraStream = await navigator.mediaDevices.getUserMedia({
             video: true,
@@ -1385,14 +1435,15 @@
           video.classList.remove('rear');
         }
 
+        // 비디오 display 요소를 먼저 block으로 변경하여 재생 거부를 방지
+        video.style.display = 'block';
+
         // play() 호출 시 브라우저 정책(오토플레이 정책) 예외 방어적 캐치
         try {
           await video.play();
         } catch (playErr) {
           console.warn("video.play() 호출 거부됨 (사용자 동작 대기):", playErr);
         }
-        
-        video.style.display = 'block';
 
         // 씬 구성 및 HUD 활성화
         document.getElementById('splash').classList.add('gone');
@@ -1433,21 +1484,26 @@
         startBtn.textContent = '📷 AR 카메라 연결 시작';
         startBtn.disabled = false;
         
+        // 상세 에러 진단 메시지 구성
         let errorMsg = '카메라 장치 연동에 실패했습니다.';
+        let debugDetail = `에러명: ${err.name}\n메세지: ${err.message || '없음'}\n프로토콜: ${window.location.protocol}\nUserAgent: ${navigator.userAgent}`;
+        
         if (err.name === 'NotAllowedError') {
-          errorMsg = '카메라 사용 권한이 거부되었습니다.\n브라우저 주소창 좌측의 설정 버튼(자물쇠 모양 등)을 누르고 카메라 허용을 활성화한 뒤 다시 시도해 주세요.';
+          errorMsg = '카메라 사용 권한이 거부되었습니다.\n\n[조치 방법]\n1. 브라우저 주소창 좌측의 설정 버튼(자물쇠 모양 등)을 누르고 카메라 허용을 활성화하세요.\n2. Windows 설정(개인 정보 -> 카메라) 또는 모바일 설정에서 브라우저의 카메라 앱 권한이 켜져 있는지 확인해 주세요.';
         } else if (err.name === 'NotReadableError') {
-          errorMsg = '카메라가 이미 다른 프로세스(예: Zoom, Teams, 다른 브라우저 탭 등)에서 활성화되어 있습니다.\n사용 중인 다른 카메라 관련 프로그램을 종료한 뒤 다시 진행해 주세요.';
+          errorMsg = '카메라가 이미 다른 프로세스(예: Zoom, Teams, Discord, OBS, 또는 다른 브라우저 탭)에서 사용 중입니다.\n\n[조치 방법]\n카메라를 켜고 있는 다른 백그라운드 프로그램이나 웹 브라우저 탭을 완전히 종료한 뒤 다시 시도해 주세요.';
         } else if (err.name === 'NotFoundError') {
-          errorMsg = '기기에 연결된 유효한 카메라 하드웨어를 찾을 수 없습니다.';
-        } else {
-          errorMsg = `카메라 미디어 오류: ${err.message || err.name}`;
+          errorMsg = '기기에 연결된 유효한 카메라 하드웨어(웹캠/카메라 모듈)를 찾을 수 없습니다.';
+        } else if (err.name === 'OverconstrainedError') {
+          errorMsg = '브라우저가 요구하는 카메라 사양을 기기 하드웨어가 지원하지 못합니다.';
+        } else if (err.message && err.message.includes('SecurityError')) {
+          errorMsg = '보안 제한으로 인해 카메라를 시작할 수 없습니다. 반드시 https:// 주소로 접속해 주세요.';
         }
         
-        alert(errorMsg);
+        alert(`${errorMsg}\n\n[디버그 진단 정보]\n${debugDetail}`);
         
         // 기기에 카메라가 없거나 완전히 실패한 경우 시뮬레이션 모드로 진입 제안
-        const goSim = confirm('카메라 미디어를 획득하지 못했습니다. 카메라 없이 가상 시뮬레이션 모드로 시작할까요?');
+        const goSim = confirm('카메라를 획득하지 못했습니다. 카메라 없이 가상 시뮬레이션 모드로 시작할까요?');
         if (goSim) {
           document.getElementById('splash').classList.add('gone');
           document.getElementById('ar-ui').classList.add('on');
