@@ -7,9 +7,97 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
 
-  <!-- A-Frame & AR.js (완벽한 마커 기반 3D 공간 고정용) -->
+  <!-- 모바일 온스크린 디버그 콘솔 (실시간 오류 진단용) -->
+  <script>
+    (function() {
+      const consoleDiv = document.createElement('div');
+      consoleDiv.id = 'debug-log-console';
+      consoleDiv.style.cssText = 'position: fixed; bottom: 10px; left: 10px; right: 10px; height: 120px; background: rgba(0,0,0,0.85); color: #00ffcc; font-family: monospace; font-size: 10px; overflow-y: auto; z-index: 9999; border: 1px solid #00f0ff; border-radius: 6px; padding: 6px; pointer-events: auto; display: none;';
+      
+      const toggleBtn = document.createElement('button');
+      toggleBtn.textContent = '🛠️ 디버그 로그';
+      toggleBtn.style.cssText = 'position: fixed; bottom: 140px; right: 10px; z-index: 10000; padding: 6px 12px; background: #0f172a; border: 1px solid #00f0ff; color: #00f0ff; border-radius: 4px; font-size: 11px; font-weight: bold; cursor: pointer;';
+      toggleBtn.onclick = () => {
+        consoleDiv.style.display = consoleDiv.style.display === 'none' ? 'block' : 'none';
+      };
+      
+      document.addEventListener('DOMContentLoaded', () => {
+        document.body.appendChild(consoleDiv);
+        document.body.appendChild(toggleBtn);
+      });
+      
+      function logToScreen(type, args) {
+        const msg = Array.from(args).map(arg => {
+          if (typeof arg === 'object') {
+            try { return JSON.stringify(arg); } catch(e) { return arg.toString(); }
+          }
+          return arg;
+        }).join(' ');
+        
+        const logLine = document.createElement('div');
+        logLine.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
+        logLine.style.padding = '2px 0';
+        logLine.innerHTML = `[\${new Date().toLocaleTimeString()}] <span style="color:\${type === 'error' ? '#ff3366' : type === 'warn' ? '#ffcc00' : '#00ffcc'}">\${type.toUpperCase()}</span>: \${msg}`;
+        consoleDiv.appendChild(logLine);
+        consoleDiv.scrollTop = consoleDiv.scrollHeight;
+      }
+      
+      window.onerror = function(message, source, lineno, colno, error) {
+        logToScreen('error', [`\${message} at \${source}:\${lineno}:\${colno}`]);
+        return false;
+      };
+      
+      const origError = console.error;
+      console.error = function() {
+        logToScreen('error', arguments);
+        origError.apply(console, arguments);
+      };
+      
+      const origWarn = console.warn;
+      console.warn = function() {
+        logToScreen('warn', arguments);
+        origWarn.apply(console, arguments);
+      };
+    })();
+  </script>
+
+  <!-- A-Frame & AR.js CDN (jsDelivr 고속 CDN 로드로 네트워크 타임아웃 방지) -->
   <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
-  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@master/aframe/build/aframe-ar.js"></script>
+
+  <!-- 엔진 로딩 가드 시스템 (덜 준비된 상태에서 클릭 시 발생하는 크래시 차단) -->
+  <script>
+    window.addEventListener('load', () => {
+      const startBtn = document.getElementById('btn-start');
+      if (startBtn) {
+        startBtn.disabled = true;
+        startBtn.textContent = "엔진 로딩 중 (A-Frame)...";
+      }
+      
+      let checkCount = 0;
+      const checkInterval = setInterval(() => {
+        checkCount++;
+        const isAFrameLoaded = typeof AFRAME !== 'undefined';
+        const isThreeLoaded = isAFrameLoaded && typeof AFRAME.THREE !== 'undefined';
+        
+        if (isAFrameLoaded && isThreeLoaded) {
+          clearInterval(checkInterval);
+          if (startBtn) {
+            startBtn.disabled = false;
+            startBtn.textContent = "📷 AR 카메라 연결 시작";
+          }
+          console.log("A-Frame & THREE.js loaded successfully!");
+        } else if (checkCount > 50) {
+          clearInterval(checkInterval);
+          if (startBtn) {
+            startBtn.disabled = false;
+            startBtn.textContent = "📷 AR 카메라 연결 시작 (로딩 지연)";
+          }
+          console.warn("A-Frame loading timeout.");
+        }
+      }, 200);
+    });
+  </script>
 
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
