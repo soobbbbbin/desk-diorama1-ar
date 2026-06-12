@@ -1397,6 +1397,16 @@
       startBtn.textContent = '카메라 연결 검증 중...';
       startBtn.disabled = true;
 
+      // ⚠️ 안전장치: 혹시 이전에 사용하던 스트림이 남아있다면 완벽하게 릴리즈 처리하여 장치 락 방지
+      if (cameraStream) {
+        try {
+          cameraStream.getTracks().forEach(track => track.stop());
+        } catch (e) {
+          console.warn("이전 카메라 스트림 해제 실패:", e);
+        }
+        cameraStream = null;
+      }
+
       try {
         // 보안 컨텍스트 체크 (HTTPS 필수)
         if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
