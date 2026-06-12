@@ -789,6 +789,14 @@
     const spawnedBuildings = [];
     const root = document.getElementById('buildings-root');
 
+    // 상태 메세지 업데이트 헬퍼 함수
+    function setStatus(msg) {
+      const statusEl = document.getElementById('status');
+      if (statusEl) {
+        statusEl.textContent = msg;
+      }
+    }
+
     // 색상 음영 보정 헬퍼
     function shadeColor(hex, pct) {
       if (!hex || hex[0] !== '#') return hex;
