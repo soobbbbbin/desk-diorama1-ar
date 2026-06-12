@@ -742,7 +742,7 @@
     </div>
 
     <div class="s-sub">인쇄물이나 책상 위의 공간을 스캔하세요.<br>그 위에 가상 도시의 홀로그램을 투사합니다.</div>
-    <button class="btn-premium" id="btn-start" onclick="startAR()">📷 AR 카메라 연결 시작</button>
+    <button class="btn-premium" id="btn-start" onclick="requestGyroAndStartAR()">📷 AR 카메라 연결 시작</button>
   </div>
 
   <script>
@@ -1180,13 +1180,13 @@
     }
 
     // ════════════════════════════════════════════
-    // 마우스 및 터치 제스처 바인딩
+    // 마우스 및 터치 제스처 바인딩 (이동 및 오빗 회전 복원)
     // ════════════════════════════════════════════
     
     // 포인터 이벤트 통합 (Touch & Mouse)
     window.addEventListener('pointerdown', (e) => {
       // UI 요소 조작 시 드래그 동작 무시
-      if (e.target.closest('#dashboard') || e.target.closest('#splash') || e.target.closest('#status')) return;
+      if (e.target.closest('#dashboard') || e.target.closest('#splash') || e.target.closest('#status') || e.target.closest('#btn-dev-toggle')) return;
       
       isPointerDown = true;
       startPX = e.clientX;
@@ -1252,45 +1252,56 @@
     let initialBeta = null;
     let initialGamma = null;
 
-    function startGyroscope() {
-      if (!window.DeviceOrientationEvent) return;
+    // 자이로센서의 물리적 변화값을 매 프레임 업데이트하는 수집 리스너
+    const handleOrientation = (e) => {
+      if (!gyroActive) return;
+      if (e.beta === null || e.gamma === null) return;
 
-      const handleOrientation = (e) => {
-        if (!gyroActive) return;
-        if (e.beta === null || e.gamma === null) return;
+      currentBeta = e.beta;
+      currentGamma = e.gamma;
+      currentAlpha = e.alpha !== null ? e.alpha : 0;
 
-        currentBeta = e.beta;
-        currentGamma = e.gamma;
-        currentAlpha = e.alpha !== null ? e.alpha : 0;
-
-        // 터치 드래그 및 자이로 고정 활성화 전까지만 단순 2.5D 패럴랙스로 작동
-        if (!isPointerDown && !isAnchored) {
-          if (initialBeta === null) {
-            initialBeta = e.beta;
-            initialGamma = e.gamma;
-            return;
-          }
-          let deltaBeta = e.beta - initialBeta;
-          let deltaGamma = e.gamma - initialGamma;
-
-          targetParallaxX = Math.max(-1, Math.min(1, deltaGamma * 0.05));
-          targetParallaxY = Math.max(-1, Math.min(1, deltaBeta * 0.05));
+      // 앵커 안착 지정 전까지만 가벼운 2.5D 패럴랙스로 작동
+      if (!isPointerDown && !isAnchored) {
+        if (initialBeta === null) {
+          initialBeta = e.beta;
+          initialGamma = e.gamma;
+          return;
         }
-      };
+        let deltaBeta = e.beta - initialBeta;
+        let deltaGamma = e.gamma - initialGamma;
 
-      // iOS 13+ 권한 확인 대응
-      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        targetParallaxX = Math.max(-1, Math.min(1, deltaGamma * 0.05));
+        targetParallaxY = Math.max(-1, Math.min(1, deltaBeta * 0.05));
+      }
+    };
+
+    // iOS 18 Safari 대응: 사용자 터치 이벤트의 동기식 최상위 콜스택에서 직접 기폭시키는 권한 활성화 함수
+    function requestGyroAndStartAR() {
+      if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        setStatus('📡 자이로 권한 팝업을 수락하세요...');
         DeviceOrientationEvent.requestPermission()
           .then(permissionState => {
             if (permissionState === 'granted') {
               gyroActive = true;
+              setStatus('📡 자이로 권한 승인 완료');
               window.addEventListener('deviceorientation', handleOrientation, { passive: true });
+            } else {
+              setStatus('⚠️ 자이로 권한 거부됨 (공간 고정 불가능)');
+              console.warn("DeviceOrientation permission denied by user");
             }
+            startAR(); // 비디오 스트림 및 AR 씬 시작
           })
-          .catch(console.error);
+          .catch(err => {
+            console.error("자이로 권한 획득 예외 발생:", err);
+            setStatus('⚠️ 자이로 권한 실패: ' + err.message);
+            startAR();
+          });
       } else {
+        // iOS 외의 일반 브라우저 대응
         gyroActive = true;
         window.addEventListener('deviceorientation', handleOrientation, { passive: true });
+        startAR();
       }
     }
 
@@ -1301,6 +1312,12 @@
       parallaxY += (targetParallaxY - parallaxY) * 0.08;
       
       if (cityStage.classList.contains('show')) {
+        // 실시간 자이로 작동 유무 및 각도 수치를 하단 HUD에 출력 (디버그 모니터링 시각화)
+        const hudStats = document.getElementById('hud-city-stats');
+        if (hudStats) {
+          hudStats.textContent = `GYRO: ${gyroActive ? 'ON' : 'OFF'} | B:${currentBeta.toFixed(0)} G:${currentGamma.toFixed(0)} | ${isAnchored ? 'ANCHOR' : 'STANDBY'}`;
+        }
+
         if (isAnchored && gyroActive) {
           // 폰 움직임 각도 변위 계산
           const dAlpha = getAngleDiff(currentAlpha, anchorAlpha);
@@ -1612,9 +1629,6 @@
     let cameraStream = null;
 
     async function startAR() {
-      // 폰 자이로 센서 즉시 권한 요청 및 데이터 연동 시작 (User Interaction 컨텍스트 준수)
-      startGyroscope();
-
       const startBtn = document.getElementById('btn-start');
       startBtn.textContent = '카메라 연결 검증 중...';
       startBtn.disabled = true;
