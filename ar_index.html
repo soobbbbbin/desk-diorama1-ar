@@ -100,7 +100,8 @@
       position: absolute;
       transform-origin: bottom center;
       transform-style: preserve-3d;
-      transform: scaleY(0.001);
+      /* 기본적으로 세로로 서 있게 하기 위해 rotateX(-90deg) 적용 */
+      transform: rotateX(-90deg) scaleY(0.001);
       transition: transform 0.05s linear;
     }
 
@@ -855,7 +856,7 @@
           b.style.cssText = `
             width: ${ww}px; height: ${h}px;
             bottom: 0; left: 0;
-            transform: scaleY(0.001);
+            transform: rotateX(-90deg) scaleY(0.001);
           `;
 
           // 3. 앞면 (Front Face)
@@ -1126,10 +1127,10 @@
 
       rebuildCity();
 
-      // 모든 건물을 프린팅 시작 모드로 셋팅
+      // 모든 건물을 프린팅 시작 모드로 셋팅 (세로로 서 있게 rotateX(-90deg) 필수)
       spawnedBuildings.forEach(b => {
         b.classList.add('printing');
-        b.style.transform = 'scaleY(0.001)';
+        b.style.transform = 'rotateX(-90deg) scaleY(0.001)';
       });
 
       let progress = 0;
@@ -1141,9 +1142,9 @@
         // 진행률 UI 업데이트
         printFill.style.width = (progress * 100) + '%';
         
-        // 빌딩 높이 스케일링
+        // 빌딩 높이 스케일링 (세로 방향 회전값 rotateX(-90deg) 유지하며 스케일링)
         spawnedBuildings.forEach(b => {
-          b.style.transform = `scaleY(${progress})`;
+          b.style.transform = `rotateX(-90deg) scaleY(${progress})`;
         });
 
         if (progress < 1.0) {
@@ -1177,9 +1178,9 @@
       if (!isPrinting) {
         rebuildCity(val / 100);
         
-        // 스케일을 즉시 1로 고정
+        // 스케일을 즉시 1로 고정 (세로 방향 유지)
         spawnedBuildings.forEach(b => {
-          b.style.transform = 'scaleY(1)';
+          b.style.transform = 'rotateX(-90deg) scaleY(1)';
         });
       }
     }
@@ -1205,9 +1206,9 @@
       currentWobbleAmount += (targetWobbleAmount - currentWobbleAmount) * 0.1;
       
       if (currentWobbleAmount < 0.005 && targetWobbleAmount === 0) {
-        // 정지
+        // 정지 시 세로로 정렬
         spawnedBuildings.forEach(b => {
-          b.style.transform = 'scaleY(1) rotateX(0deg) rotateZ(0deg)';
+          b.style.transform = 'rotateX(-90deg) scaleY(1) rotateX(0deg) rotateZ(0deg)';
         });
         wobbleAnimId = null;
         return;
@@ -1224,7 +1225,8 @@
         const origH = b.dataset.origH;
         // 높이(origH)가 클수록 관성에 의해 더 크게 흔들림
         const factor = origH / 100;
-        b.style.transform = `scaleY(${scaleSquash}) rotateX(${angleX * factor}deg) rotateZ(${angleZ * factor}deg)`;
+        // rotateX(-90deg)를 맨 처음에 적용해 세로 축이 서 있게 한 상태에서 로컬 Wobble 회전을 가산합니다.
+        b.style.transform = `rotateX(-90deg) scaleY(${scaleSquash}) rotateX(${angleX * factor}deg) rotateZ(${angleZ * factor}deg)`;
       });
 
       wobbleAnimId = requestAnimationFrame(animateWobble);
@@ -1297,24 +1299,35 @@
       startBtn.disabled = true;
 
       try {
-        // 모바일/환경용 후면 카메라 ideal 배치 호출
-        cameraStream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: 'environment' },
-            width: { ideal: 1920 },
-            height: { ideal: 1080 }
-          },
-          audio: false
-        });
+        // 1단계: 후면 카메라 및 고해상도(HD급) 획득 시도
+        try {
+          cameraStream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: { ideal: 'environment' },
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
+            },
+            audio: false
+          });
+        } catch (err1) {
+          console.warn("1단계 카메라 획득 실패, 기본 웹캠으로 대체 시도:", err1);
+          // 2단계: facingMode 및 해상도 상세 제약 없이 연결 허용된 비디오 획득 (PC 환경 등 대응)
+          cameraStream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false
+          });
+        }
 
         const video = document.getElementById('cam-video');
         video.srcObject = cameraStream;
 
-        // 카메라 타입에 따른 플립 수정
+        // 카메라 방향 상태 획득 및 미러 처리 설정
         const track = cameraStream.getVideoTracks()[0];
         const settings = track.getSettings();
         if (settings.facingMode === 'environment') {
           video.classList.add('rear');
+        } else {
+          video.classList.remove('rear');
         }
 
         await video.play();
@@ -1330,7 +1343,7 @@
 
         // 첫 탭/클릭으로 도시 투사 시작 바인딩
         const triggerAnchor = (e) => {
-          // UI 버튼을 클릭한 경우 버블링 방지
+          // UI 조작 패널이나 종료 버튼을 탭한 경우 버블링 차단
           if (e.target.closest('#btn-exit') || e.target.closest('#dashboard')) return;
 
           document.getElementById('scanning-overlay').style.display = 'none';
@@ -1348,15 +1361,19 @@
           window.removeEventListener('touchstart', triggerAnchor);
         };
 
-        window.addEventListener('click', triggerAnchor);
-        window.addEventListener('touchstart', triggerAnchor);
+        // 클릭 즉시 스폰되는 것을 방지하기 위해 100ms 버블링 딜레이 후 리스너 등록
+        setTimeout(() => {
+          window.addEventListener('click', triggerAnchor);
+          window.addEventListener('touchstart', triggerAnchor);
+        }, 100);
 
       } catch (err) {
+        console.error("카메라 연결 실패:", err);
         startBtn.textContent = '📷 AR 카메라 연결 시작';
         startBtn.disabled = false;
         
-        // 기기에 후면 카메라 등이 없을 때 시뮬레이션 모드로 진입 제안
-        const goSim = confirm('후면 카메라를 획득하지 못했습니다.\n카메라 없이 3D 홀로그램 가상 시뮬레이션 모드로 시작할까요?');
+        // 기기에 카메라가 없거나 완전히 실패한 경우 시뮬레이션 모드로 진입 제안
+        const goSim = confirm('카메라 미디어를 획득하지 못했습니다. 카메라 없이 가상 시뮬레이션 모드로 시작할까요?');
         if (goSim) {
           document.getElementById('splash').classList.add('gone');
           document.getElementById('ar-ui').classList.add('on');
