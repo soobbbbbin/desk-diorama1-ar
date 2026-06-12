@@ -738,6 +738,16 @@
   </div>
 
   <script>
+    // 상태 메세지 업데이트 헬퍼 함수 (최상단 정의 및 window 바인딩으로 ReferenceError 원천 방지)
+    function setStatus(msg) {
+      const statusEl = document.getElementById('status');
+      if (statusEl) {
+        statusEl.textContent = msg;
+      }
+      console.log("[Status]:", msg);
+    }
+    window.setStatus = setStatus;
+
     /* ════════════════════════════════════════════
        3D 도시 레이아웃 & 아키타입 데이터 세팅
     ════════════════════════════════════════════ */
@@ -788,14 +798,6 @@
     let activeArch = 'chaos';
     const spawnedBuildings = [];
     const root = document.getElementById('buildings-root');
-
-    // 상태 메세지 업데이트 헬퍼 함수
-    function setStatus(msg) {
-      const statusEl = document.getElementById('status');
-      if (statusEl) {
-        statusEl.textContent = msg;
-      }
-    }
 
     // 색상 음영 보정 헬퍼
     function shadeColor(hex, pct) {
