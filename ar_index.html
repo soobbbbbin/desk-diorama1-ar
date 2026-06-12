@@ -2,9 +2,6 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <meta http-equiv="Pragma" content="no-cache">
-  <meta http-equiv="Expires" content="0">
   <title>Desk Diorama AR — Premium Hologram Simulator</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -741,15 +738,6 @@
   </div>
 
   <script>
-    // ⚠️ 자동 캐시 버스팅 게이트웨이: 기존 큐알(파라미터 없는 주소) 접속 시 강제로 타임스탬프를 덧붙여 캐시 오작동 차단
-    (function() {
-      const urlParams = new URLSearchParams(window.location.search);
-      if (!urlParams.has('v')) {
-        urlParams.set('v', Date.now());
-        window.location.replace(window.location.pathname + '?' + urlParams.toString() + window.location.hash);
-      }
-    })();
-
     // 상태 메세지 업데이트 헬퍼 함수 (최상단 정의 및 window 바인딩으로 ReferenceError 원천 방지)
     function setStatus(msg) {
       const statusEl = document.getElementById('status');
