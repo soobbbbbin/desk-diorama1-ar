@@ -1,468 +1,520 @@
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 <head>
   <meta charset="utf-8">
-  <title>Desk Diorama - WebXR Mobile AR</title>
+  <title>Desk Diorama AR</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+
+  <!-- A-Frame 1.4.2 -->
   <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+
   <style>
-    /* ── Global Reset ── */
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
+    /* ── 기본 상태: 어두운 배경 ── */
     html, body {
-      width: 100%;
-      height: 100%;
+      width: 100%; height: 100%;
       overflow: hidden;
+      background: #0a0e1a;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: #e0e6f0;
+    }
+
+    /* AR 진입 시 body 클래스로 투명 전환 */
+    body.ar-active {
       background: transparent !important;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    body.ar-active canvas {
+      background: transparent !important;
     }
 
-    /* A-Frame scene fills the screen and is behind UI */
-    a-scene {
-      position: fixed !important;
-      top: 0; left: 0;
-      width: 100% !important;
-      height: 100% !important;
-      z-index: 1;
-    }
-
-    /* A-Frame canvas must NOT steal pointer events */
+    /* A-Frame canvas */
     a-scene canvas {
       pointer-events: none !important;
     }
 
-    /* ── Main UI Wrapper ── */
-    #ui-wrapper {
+    /* ═══════════════════════════
+       스플래시 화면 (AR 시작 전)
+    ═══════════════════════════ */
+    #splash {
       position: fixed;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      pointer-events: none;   /* pass-through by default */
-      z-index: 9999;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      background: linear-gradient(160deg, #0a0e1a 0%, #0d1f3c 50%, #0a0e1a 100%);
+      transition: opacity 0.4s ease;
+    }
+    #splash.hidden {
+      opacity: 0;
+      pointer-events: none;
     }
 
-    /* ── Splash / Pre-AR panel ── */
-    #splash-panel {
+    .splash-logo {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+
+    .splash-title {
+      font-size: 24px;
+      font-weight: 700;
+      color: #00cfff;
+      text-shadow: 0 0 20px rgba(0,207,255,0.6);
+      margin-bottom: 8px;
+      letter-spacing: 1px;
+    }
+
+    .splash-sub {
+      font-size: 13px;
+      color: #6e8098;
+      margin-bottom: 40px;
+      text-align: center;
+      padding: 0 20px;
+    }
+
+    #start-btn {
+      padding: 18px 48px;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: #fff;
+      background: linear-gradient(135deg, #00cfff, #005fff);
+      border: none;
+      border-radius: 50px;
+      cursor: pointer;
+      box-shadow: 0 0 30px rgba(0,150,255,0.5), 0 4px 20px rgba(0,0,0,0.4);
+      transition: transform 0.15s, box-shadow 0.15s;
+      -webkit-tap-highlight-color: transparent;
+      pointer-events: auto;
+    }
+    #start-btn:active {
+      transform: scale(0.95);
+      box-shadow: 0 0 15px rgba(0,150,255,0.3);
+    }
+
+    .hint {
+      margin-top: 24px;
+      font-size: 11px;
+      color: #3d5168;
+      text-align: center;
+    }
+
+    /* ═══════════════════════════
+       AR HUD (AR 진입 후)
+    ═══════════════════════════ */
+    #hud {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 200;
+      display: none;
+    }
+    #hud.visible { display: block; }
+
+    /* 상단 상태 표시 */
+    #status-bar {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(0,207,255,0.3);
+      border-radius: 24px;
+      padding: 10px 24px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #00cfff;
+      letter-spacing: 0.5px;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+
+    /* 하단 패널 */
+    #bottom-panel {
       position: absolute;
       bottom: 28px;
       left: 50%;
       transform: translateX(-50%);
-      width: 88%;
-      max-width: 400px;
-      background: rgba(13, 17, 23, 0.82);
+      width: 90%;
+      max-width: 380px;
+      background: rgba(0,0,0,0.65);
       backdrop-filter: blur(14px);
       -webkit-backdrop-filter: blur(14px);
-      border: 1px solid rgba(0, 210, 255, 0.25);
-      border-radius: 18px;
-      padding: 18px 16px;
-      pointer-events: auto;   /* clickable */
-      box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0,210,255,0.08);
+      border: 1px solid rgba(0,207,255,0.2);
+      border-radius: 20px;
+      padding: 16px;
+      pointer-events: auto;
     }
 
-    .panel-title {
-      font-size: 17px;
-      font-weight: 700;
-      text-align: center;
-      color: #00d2ff;
-      letter-spacing: 0.6px;
-      text-shadow: 0 0 14px rgba(0,210,255,0.5);
-      margin-bottom: 4px;
-    }
-
-    .panel-sub {
-      font-size: 11px;
-      color: #8b949e;
-      text-align: center;
-      margin-bottom: 14px;
-    }
-
-    /* Slider row */
-    .slider-row {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      margin-bottom: 12px;
-    }
-
-    .slider-labels {
+    .progress-label {
       display: flex;
       justify-content: space-between;
       font-size: 12px;
-      color: #c9d1d9;
+      color: #8ca0b8;
+      margin-bottom: 8px;
     }
 
-    input[type=range] {
-      -webkit-appearance: none;
+    .progress-track {
       width: 100%;
       height: 6px;
+      background: #1a2535;
       border-radius: 3px;
-      background: #30363d;
-      outline: none;
-      pointer-events: auto;
-    }
-    input[type=range]::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      width: 22px; height: 22px;
-      border-radius: 50%;
-      background: #00d2ff;
-      cursor: pointer;
-      box-shadow: 0 0 10px rgba(0,210,255,0.7);
-      transition: transform 0.1s;
-    }
-    input[type=range]::-webkit-slider-thumb:active { transform: scale(1.25); }
-
-    /* Start AR button */
-    #start-ar-btn {
-      display: block;
-      width: 100%;
-      padding: 15px 0;
-      background: linear-gradient(135deg, #00d2ff 0%, #0055ff 100%);
-      border: none;
-      border-radius: 12px;
-      color: #fff;
-      font-size: 14px;
-      font-weight: 700;
-      letter-spacing: 1.2px;
-      text-transform: uppercase;
-      cursor: pointer;
-      box-shadow: 0 4px 18px rgba(0,210,255,0.45);
-      pointer-events: auto;
-      transition: transform 0.15s, box-shadow 0.15s;
-      -webkit-tap-highlight-color: transparent;
-    }
-    #start-ar-btn:active {
-      transform: scale(0.97);
-      box-shadow: 0 2px 8px rgba(0,210,255,0.3);
-    }
-
-    /* ── In-AR status strip (NO scanner rings/crosshairs) ── */
-    #ar-status-bar {
-      display: none;
-      position: absolute;
-      bottom: 28px;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 88%;
-      max-width: 400px;
-      background: rgba(13, 17, 23, 0.75);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border: 1px solid rgba(0, 210, 255, 0.2);
-      border-radius: 14px;
-      padding: 12px 16px;
-      pointer-events: auto;
-    }
-
-    .status-text {
-      font-size: 13px;
-      color: #00d2ff;
-      text-align: center;
-      font-weight: 600;
-      letter-spacing: 0.5px;
-    }
-
-    .progress-bar-bg {
-      width: 100%;
-      height: 6px;
-      background: #30363d;
-      border-radius: 3px;
-      margin-top: 8px;
       overflow: hidden;
+      margin-bottom: 12px;
     }
-    .progress-bar-fill {
+
+    .progress-fill {
       height: 100%;
       width: 0%;
-      background: linear-gradient(90deg, #00d2ff, #0055ff);
+      background: linear-gradient(90deg, #00cfff, #005fff);
       border-radius: 3px;
-      transition: width 0.15s linear;
+      transition: width 0.1s linear;
     }
 
-    /* Exit AR small button */
-    #exit-ar-btn {
+    #exit-btn {
       display: block;
       width: 100%;
-      margin-top: 10px;
-      padding: 10px 0;
-      background: rgba(255,255,255,0.08);
-      border: 1px solid rgba(255,255,255,0.15);
-      border-radius: 10px;
-      color: #8b949e;
+      padding: 11px;
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 12px;
+      color: #6e8098;
       font-size: 12px;
       cursor: pointer;
       pointer-events: auto;
       -webkit-tap-highlight-color: transparent;
     }
-    #exit-ar-btn:active { background: rgba(255,255,255,0.15); }
+    #exit-btn:active { background: rgba(255,255,255,0.15); }
   </style>
 </head>
 <body>
 
-  <!-- ═══════════════════════════════════════════════════
-       A-FRAME SCENE
-       renderer alpha=true → canvas is transparent in AR
-       vr-mode-ui disabled → no split VR button
-  ════════════════════════════════════════════════════ -->
+  <!-- ════════════════════════════════
+       스플래시 화면
+  ════════════════════════════════ -->
+  <div id="splash">
+    <div class="splash-logo">🏙️</div>
+    <div class="splash-title">Desk Diorama AR</div>
+    <div class="splash-sub">카메라로 책상 위를 비추면<br>미니어처 도시가 생성됩니다</div>
+    <button id="start-btn" onclick="startAR()">📷 AR 카메라 시작</button>
+    <div class="hint">* 카메라 권한 허용 필요 · Chrome/Safari 권장</div>
+  </div>
+
+  <!-- ════════════════════════════════
+       AR HUD
+  ════════════════════════════════ -->
+  <div id="hud">
+    <div id="status-bar">📡 책상 표면을 탐색 중...</div>
+    <div id="bottom-panel">
+      <div class="progress-label">
+        <span id="prog-label">건물 생성</span>
+        <span id="prog-pct">0%</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" id="prog-fill"></div>
+      </div>
+      <button id="exit-btn" onclick="exitAR()">✕ AR 종료</button>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════
+       A-Frame 씬
+       - alpha:true → 투명 캔버스 (카메라 패스스루 필수)
+       - hit-test: optional (필수로 하면 미지원 기기에서 세션 실패)
+  ════════════════════════════════ -->
   <a-scene
-    webxr="allowedModes: ar; referenceSpaceType: local-floor; requiredFeatures: hit-test;"
-    ar-hit-test-custom="target: #diorama-root; reticle: #scan-anchor;"
+    id="main-scene"
+    webxr="allowedModes: ar;
+           referenceSpaceType: local-floor;
+           optionalFeatures: hit-test, local-floor, bounded-floor;"
     renderer="colorManagement: true; antialias: true; alpha: true;"
-    background="color: transparent;"
-    vr-mode-ui="enabled: false">
+    embedded
+    vr-mode-ui="enabled: false"
+    ar-hit-test-manager>
 
-    <!-- Lighting -->
-    <a-light type="directional" intensity="1.2" position="2 4 3"></a-light>
-    <a-light type="ambient" intensity="0.7"></a-light>
+    <!-- 조명 -->
+    <a-light type="directional" intensity="1.5" position="2 4 2" castShadow="false"></a-light>
+    <a-light type="ambient"     intensity="0.8" color="#cce8ff"></a-light>
 
-    <!-- Diorama Root (placed at hit-test surface) -->
-    <a-entity id="diorama-root" position="0 0 0" visible="false">
+    <!-- 디오라마 루트 (히트테스트로 위치 결정) -->
+    <a-entity id="diorama-root" visible="false" position="0 0 -1.5">
 
-      <!-- Invisible anchor used by hit-test component -->
-      <a-entity id="scan-anchor"></a-entity>
-
-      <!-- Base Plate -->
+      <!-- 바닥판 -->
       <a-box
-        id="diorama-base"
-        position="0 -0.025 0"
-        width="2.6" height="0.05" depth="2.6"
-        color="#f2efe9" metalness="0.1" roughness="0.8">
+        id="base-plate"
+        position="0 -0.015 0"
+        width="2.2" height="0.03" depth="2.2"
+        color="#f0ece2"
+        roughness="0.85" metalness="0.05">
       </a-box>
 
-      <!-- Building Container (populated by JS) -->
+      <!-- 건물 컨테이너 (JS로 채워짐) -->
       <a-entity id="buildings-container"></a-entity>
 
     </a-entity>
+
   </a-scene>
 
-  <!-- ═══════════════════════════════════════════════════
-       UI OVERLAY  (always on top, pointer-events managed per child)
-  ════════════════════════════════════════════════════ -->
-  <div id="ui-wrapper">
-
-    <!-- Pre-AR splash panel -->
-    <div id="splash-panel">
-      <div class="panel-title">Desk Diorama AR</div>
-      <div class="panel-sub">Point camera at a flat surface · tap to place</div>
-
-      <div class="slider-row">
-        <div class="slider-labels">
-          <span id="clutter-status">Preview Scale</span>
-          <span id="clutter-value">0%</span>
-        </div>
-        <input type="range" id="clutter-slider" min="0" max="1" step="0.01" value="0">
-      </div>
-
-      <button id="start-ar-btn">▶ Start AR Camera</button>
-    </div>
-
-    <!-- In-AR status strip (shown after enterAR) -->
-    <div id="ar-status-bar">
-      <div class="status-text" id="ar-status-text">Scanning for surface…</div>
-      <div class="progress-bar-bg">
-        <div class="progress-bar-fill" id="progress-fill"></div>
-      </div>
-      <button id="exit-ar-btn">✕ Exit AR</button>
-    </div>
-
-  </div>
-
-  <!-- ═══════════════════════════════════════════════════
-       CUSTOM A-FRAME COMPONENT
-  ════════════════════════════════════════════════════ -->
+  <!-- ════════════════════════════════
+       커스텀 A-Frame 컴포넌트
+  ════════════════════════════════ -->
   <script>
-    AFRAME.registerComponent('ar-hit-test-custom', {
-      schema: {
-        target:  { type: 'selector' },
-        reticle: { type: 'selector' }
-      },
+    /* ──────────────────────────────────
+       ar-hit-test-manager component
+    ────────────────────────────────── */
+    AFRAME.registerComponent('ar-hit-test-manager', {
       init: function () {
-        this.xrHitTestSource = null;
+        this.hitTestSource   = null;
         this.viewerSpace     = null;
-        this.printingStarted = false;
+        this.printing        = false;
         this.printProgress   = 0;
+        this.surfaceFound    = false;
 
-        const scene = this.el.sceneEl;
+        const scene = this.el;
 
         scene.addEventListener('enter-vr', () => {
           if (!scene.is('ar-mode')) return;
 
-          // ── Transparent body for camera passthrough ──
-          document.documentElement.style.background = 'transparent';
-          document.body.style.background = 'transparent';
+          // 배경 투명화
+          document.body.classList.add('ar-active');
+          scene.renderer.setClearAlpha(0);
 
-          // ── UI switch: hide splash, show status bar ──
-          document.getElementById('splash-panel').style.display  = 'none';
-          document.getElementById('ar-status-bar').style.display = 'block';
-          document.getElementById('ar-status-text').textContent  = 'Scanning for surface…';
-          document.getElementById('ar-status-text').style.color  = '#00d2ff';
+          // UI 전환
+          document.getElementById('splash').classList.add('hidden');
+          document.getElementById('hud').classList.add('visible');
 
-          const session = scene.renderer.xr.getSession();
+          const xrSession = scene.renderer.xr.getSession();
+          if (!xrSession) return;
 
-          // Tap on surface → start print
-          session.addEventListener('select', () => {
-            if (this.xrHitTestSource && !this.printingStarted) {
-              this.printingStarted = true;
-              document.getElementById('ar-status-text').textContent = '3D Printing…';
-              document.getElementById('ar-status-text').style.color = '#58a6ff';
+          // 탭 → 건물 프린팅 시작
+          xrSession.addEventListener('select', () => {
+            if (this.surfaceFound && !this.printing) {
+              this.printing = true;
+              setStatus('🏗️ 도시를 3D 프린팅 중...');
+              document.getElementById('prog-label').textContent = '건물 생성 중';
             }
           });
 
-          session.requestReferenceSpace('viewer').then(space => {
+          // 히트테스트 소스 요청 (optional이므로 실패해도 OK)
+          xrSession.requestReferenceSpace('viewer').then(space => {
             this.viewerSpace = space;
-            session.requestHitTestSource({ space }).then(source => {
-              this.xrHitTestSource = source;
-            });
+            if (xrSession.requestHitTestSource) {
+              xrSession.requestHitTestSource({ space }).then(src => {
+                this.hitTestSource = src;
+                console.log('[AR] Hit-test source ready');
+              }).catch(e => {
+                console.warn('[AR] Hit-test not supported:', e);
+                // 히트테스트 미지원 → 기본 위치에 건물 표시
+                this.showAtDefaultPosition();
+              });
+            } else {
+              this.showAtDefaultPosition();
+            }
+          }).catch(e => {
+            console.warn('[AR] Viewer space failed:', e);
+            this.showAtDefaultPosition();
           });
         });
 
         scene.addEventListener('exit-vr', () => {
-          document.documentElement.style.background = '';
-          document.body.style.background = '';
-
-          document.getElementById('splash-panel').style.display  = 'block';
-          document.getElementById('ar-status-bar').style.display = 'none';
-
-          this.printingStarted = false;
-          this.printProgress   = 0;
-          updatePrinting(0);
-
-          if (this.data.target) this.data.target.setAttribute('visible', 'false');
+          document.body.classList.remove('ar-active');
+          document.getElementById('splash').classList.remove('hidden');
+          document.getElementById('hud').classList.remove('visible');
+          this.reset();
         });
       },
 
+      showAtDefaultPosition: function () {
+        // 히트테스트 불가 기기: 카메라 앞 1m에 고정 배치
+        const root = document.getElementById('diorama-root');
+        root.setAttribute('position', '0 -0.5 -1.2');
+        root.setAttribute('visible', 'true');
+        this.surfaceFound = true;
+        setStatus('✓ 기본 위치에 배치됨 · 탭하면 도시 생성');
+      },
+
+      reset: function () {
+        this.hitTestSource = null;
+        this.viewerSpace   = null;
+        this.printing      = false;
+        this.printProgress = 0;
+        this.surfaceFound  = false;
+        updateProgress(0);
+        const root = document.getElementById('diorama-root');
+        root.setAttribute('visible', 'false');
+        setBuildings(0);
+      },
+
       tick: function () {
-        const frame = this.el.sceneEl.frame;
-        if (!frame || !this.xrHitTestSource) return;
+        const frame = this.el.frame;
+        if (!frame) return;
 
-        if (!this.printingStarted) {
-          const refSpace = this.el.sceneEl.renderer.xr.getReferenceSpace();
-          const hits     = frame.getHitTestResults(this.xrHitTestSource);
+        /* ── 히트테스트 처리 ── */
+        if (this.hitTestSource && !this.printing) {
+          const refSpace = this.el.renderer.xr.getReferenceSpace();
+          if (!refSpace) return;
 
+          const hits = frame.getHitTestResults(this.hitTestSource);
           if (hits.length > 0) {
             const pose = hits[0].getPose(refSpace);
-            const p    = pose.transform.position;
+            const p = pose.transform.position;
 
-            this.data.target.setAttribute('position', `${p.x} ${p.y} ${p.z}`);
-            this.data.target.setAttribute('visible', 'true');
+            const root = document.getElementById('diorama-root');
+            root.setAttribute('position', `${p.x} ${p.y} ${p.z}`);
+            root.setAttribute('visible', 'true');
 
-            document.getElementById('ar-status-text').textContent = '✓ Surface found — tap to place';
-            document.getElementById('ar-status-text').style.color = '#00ff88';
+            if (!this.surfaceFound) {
+              this.surfaceFound = true;
+              setStatus('✓ 책상 감지! 탭하면 도시 생성');
+            }
           } else {
-            this.data.target.setAttribute('visible', 'false');
-            document.getElementById('ar-status-text').textContent = 'Scanning for surface…';
-            document.getElementById('ar-status-text').style.color = '#00d2ff';
+            if (!this.surfaceFound) {
+              setStatus('📡 책상 표면을 탐색 중...');
+            }
           }
+        }
 
-        } else if (this.printProgress < 1.0) {
-          this.printProgress = Math.min(1.0, this.printProgress + 0.008);
-          updatePrinting(this.printProgress);
-
-          // Update progress bar
-          document.getElementById('progress-fill').style.width =
-            (this.printProgress * 100) + '%';
+        /* ── 건물 3D 프린팅 진행 ── */
+        if (this.printing && this.printProgress < 1.0) {
+          this.printProgress = Math.min(1.0, this.printProgress + 0.006);
+          updateProgress(this.printProgress);
+          setBuildings(this.printProgress);
 
           if (this.printProgress >= 1.0) {
-            document.getElementById('ar-status-text').textContent = '🏙 Build complete!';
-            document.getElementById('ar-status-text').style.color = '#00ff88';
+            setStatus('🏙️ 도시 완성!');
+            document.getElementById('prog-label').textContent = '완성';
           }
         }
       }
     });
-  </script>
 
-  <!-- ═══════════════════════════════════════════════════
-       MAIN APP SCRIPT
-  ════════════════════════════════════════════════════ -->
-  <script>
-    /* ── Start AR button ── */
-    document.getElementById('start-ar-btn').addEventListener('click', function () {
-      const scene = document.querySelector('a-scene');
-      if (scene.is('vr-mode') || scene.is('ar-mode')) return;
+    /* ──────────────────────────────────
+       건물 생성
+    ────────────────────────────────── */
+    const GRID   = 4;
+    const SPACE  = 0.55;
+    const CENTER = (GRID - 1) * SPACE * 0.5;
 
-      if (typeof scene.enterAR === 'function') {
-        scene.enterAR();
-      } else {
-        scene.enterVR();
-      }
-    });
-
-    /* ── Exit AR button ── */
-    document.getElementById('exit-ar-btn').addEventListener('click', function () {
-      const scene = document.querySelector('a-scene');
-      if (scene.is('vr-mode') || scene.is('ar-mode')) {
-        scene.exitVR();
-      }
-    });
-
-    /* ═══════════════════════════════
-       Building grid generation
-    ═══════════════════════════════ */
-    const gridX = 4, gridZ = 4;
-    const spacing = 0.65;
-    const centerOffset = (gridX - 1) * spacing * 0.5;
-
-    const buildingTypes = [
-      { height: 0.40, color: '#eae7df', glassColor: '#1ba1e2' },
-      { height: 0.70, color: '#d9d5cb', glassColor: '#00a8ff' },
-      { height: 1.10, color: '#c9c4b7', glassColor: '#0984e3' }
+    const TYPES = [
+      { h: 0.35, body: '#e8e4d8', glass: '#1ba1e2' },
+      { h: 0.60, body: '#d5d0c2', glass: '#0090ea' },
+      { h: 0.95, body: '#c0baaa', glass: '#0070d8' },
+      { h: 0.45, body: '#dedad0', glass: '#2ab5f5' },
     ];
 
-    const layout = [0,1,2,1, 2,0,1,2, 1,2,0,1, 0,1,2,0];
+    const LAYOUT = [
+      0,1,2,1,
+      2,0,1,3,
+      1,3,0,2,
+      0,2,1,0
+    ];
 
     const container = document.getElementById('buildings-container');
     const buildings = [];
 
-    for (let x = 0; x < gridX; x++) {
-      for (let z = 0; z < gridZ; z++) {
-        const type = buildingTypes[layout[x * gridZ + z]];
-        const posX = x * spacing - centerOffset;
-        const posZ = z * spacing - centerOffset;
+    for (let x = 0; x < GRID; x++) {
+      for (let z = 0; z < GRID; z++) {
+        const t = TYPES[LAYOUT[x * GRID + z]];
+        const px = x * SPACE - CENTER;
+        const pz = z * SPACE - CENTER;
 
         const root = document.createElement('a-entity');
-        root.setAttribute('position', `${posX} 0 ${posZ}`);
-        root.setAttribute('scale', '1 0.001 1'); // start collapsed
+        root.setAttribute('position', `${px} 0 ${pz}`);
+        root.setAttribute('scale', '1 0.001 1');
 
+        // 본체
         const body = document.createElement('a-box');
-        body.setAttribute('width',    '0.4');
-        body.setAttribute('depth',    '0.4');
-        body.setAttribute('height',   type.height.toString());
-        body.setAttribute('color',    type.color);
-        body.setAttribute('roughness','0.9');
-        body.setAttribute('metalness','0.0');
-        body.setAttribute('position', `0 ${type.height / 2} 0`);
+        body.setAttribute('width',     '0.35');
+        body.setAttribute('depth',     '0.35');
+        body.setAttribute('height',    String(t.h));
+        body.setAttribute('position',  `0 ${t.h / 2} 0`);
+        body.setAttribute('color',     t.body);
+        body.setAttribute('roughness', '0.85');
+        body.setAttribute('metalness', '0.05');
         root.appendChild(body);
 
+        // 유리 상층부
         const glass = document.createElement('a-box');
-        glass.setAttribute('width',    '0.3');
-        glass.setAttribute('depth',    '0.3');
-        glass.setAttribute('height',   (type.height * 0.4).toString());
-        glass.setAttribute('color',    type.glassColor);
-        glass.setAttribute('material', 'transparent: true; opacity: 0.6; metalness: 0.9; roughness: 0.1');
-        glass.setAttribute('position', `0 ${type.height * 0.7} 0`);
+        glass.setAttribute('width',    '0.26');
+        glass.setAttribute('depth',    '0.26');
+        glass.setAttribute('height',   String(t.h * 0.38));
+        glass.setAttribute('position', `0 ${t.h * 0.75} 0`);
+        glass.setAttribute('color',    t.glass);
+        glass.setAttribute('material', 'transparent: true; opacity: 0.65; metalness: 0.9; roughness: 0.05');
         root.appendChild(glass);
 
+        // 옥상 안테나
+        const ant = document.createElement('a-cylinder');
+        ant.setAttribute('radius',   '0.015');
+        ant.setAttribute('height',   '0.08');
+        ant.setAttribute('position', `0 ${t.h + 0.04} 0`);
+        ant.setAttribute('color',    '#aaaaaa');
+        root.appendChild(ant);
+
         container.appendChild(root);
-        buildings.push({ element: root });
+        buildings.push({ el: root, h: t.h });
       }
     }
 
-    function updatePrinting(progress) {
-      const scaleY = Math.max(0.001, progress);
+    function setBuildings(progress) {
+      const s = Math.max(0.001, progress);
       buildings.forEach(b => {
-        b.element.setAttribute('scale', `1 ${scaleY} 1`);
+        b.el.setAttribute('scale', `1 ${s} 1`);
       });
-
-      document.getElementById('clutter-slider').value = progress;
-      document.getElementById('clutter-value').textContent = Math.round(progress * 100) + '%';
     }
 
-    /* Slider preview (non-AR) */
-    document.getElementById('clutter-slider').addEventListener('input', function () {
-      const val = parseFloat(this.value);
-      document.getElementById('clutter-status').textContent = 'Preview Scale';
-      updatePrinting(val);
-    });
+    /* ──────────────────────────────────
+       UI 헬퍼
+    ────────────────────────────────── */
+    function setStatus(msg) {
+      document.getElementById('status-bar').textContent = msg;
+    }
 
-    /* Init */
-    updatePrinting(0);
+    function updateProgress(v) {
+      const pct = Math.round(v * 100);
+      document.getElementById('prog-fill').style.width = pct + '%';
+      document.getElementById('prog-pct').textContent  = pct + '%';
+    }
+
+    /* ──────────────────────────────────
+       AR 시작 / 종료
+    ────────────────────────────────── */
+    function startAR() {
+      const scene = document.getElementById('main-scene');
+
+      // A-Frame이 아직 로딩 중이면 잠시 대기
+      if (!scene.hasLoaded) {
+        scene.addEventListener('loaded', startAR, { once: true });
+        return;
+      }
+
+      if (navigator.xr) {
+        navigator.xr.isSessionSupported('immersive-ar').then(supported => {
+          if (supported) {
+            typeof scene.enterAR === 'function' ? scene.enterAR() : scene.enterVR();
+          } else {
+            // WebXR AR 미지원 → 데스크탑 preview 모드
+            alert('이 기기/브라우저는 WebXR AR을 지원하지 않습니다.\nAndroid Chrome 또는 iOS Safari(16+)에서 열어주세요.');
+          }
+        }).catch(() => {
+          typeof scene.enterAR === 'function' ? scene.enterAR() : scene.enterVR();
+        });
+      } else {
+        alert('WebXR을 지원하지 않는 브라우저입니다.\nAndroid Chrome을 사용해주세요.');
+      }
+    }
+
+    function exitAR() {
+      const scene = document.getElementById('main-scene');
+      if (scene.is('vr-mode') || scene.is('ar-mode')) {
+        scene.exitVR();
+      }
+    }
   </script>
 </body>
 </html>
