@@ -1302,20 +1302,52 @@
       
       if (cityStage.classList.contains('show')) {
         if (isAnchored && gyroActive) {
-          // 스마트폰 후면 카메라 화각(FOV) 추정값 (수평 60도, 수직 75도)
-          const FOV_X_RAD = 60 * Math.PI / 180;
-          const FOV_Y_RAD = 75 * Math.PI / 180;
-
           // 폰 움직임 각도 변위 계산
           const dAlpha = getAngleDiff(currentAlpha, anchorAlpha);
           const dBeta = currentBeta - anchorBeta;
+
+          // 1. Frustum Culling: 화각 한계를 벗어나 비추지 않을 때는 완전히 페이드아웃하여 투명화 (안 보이게 조치)
+          const absDAlpha = Math.abs(dAlpha);
+          const absDBeta = Math.abs(dBeta);
+
+          // 각도가 극단적으로 꺾였을 때 탄젠트 폭주/폭발 예외 가드 및 즉시 숨김
+          if (absDAlpha > 80 || absDBeta > 80) {
+            cityStage.style.opacity = 0;
+            cityStage.style.pointerEvents = 'none';
+            requestAnimationFrame(renderLoop);
+            return;
+          }
+
+          // 카메라 화각(수평 60도, 수직 75도)의 하프 앵커를 기준으로 부드러운 불투명도 페이드
+          const fadeStartAlpha = 24; // 24도부터 페이드아웃 시작
+          const fadeLimitAlpha = 32; // 32도 이후로는 완전 소멸
+          const fadeStartBeta = 30;  // 30도부터 페이드아웃 시작
+          const fadeLimitBeta = 38;  // 38도 이후로는 완전 소멸
+
+          let opacityAlpha = 1.0;
+          if (absDAlpha > fadeStartAlpha) {
+            opacityAlpha = Math.max(0, 1 - (absDAlpha - fadeStartAlpha) / (fadeLimitAlpha - fadeStartAlpha));
+          }
+
+          let opacityBeta = 1.0;
+          if (absDBeta > fadeStartBeta) {
+            opacityBeta = Math.max(0, 1 - (absDBeta - fadeStartBeta) / (fadeLimitBeta - fadeStartBeta));
+          }
+
+          const finalOpacity = opacityAlpha * opacityBeta;
+          cityStage.style.opacity = finalOpacity;
+          cityStage.style.pointerEvents = finalOpacity <= 0 ? 'none' : 'auto';
+
+          // 스마트폰 후면 카메라 화각(FOV) 추정값 (수평 60도, 수직 75도)
+          const FOV_X_RAD = 60 * Math.PI / 180;
+          const FOV_Y_RAD = 75 * Math.PI / 180;
 
           const dAlphaRad = dAlpha * Math.PI / 180;
           const dBetaRad = dBeta * Math.PI / 180;
 
           // 탄젠트 역투영 삼각함수 공식을 활용해 디바이스 회전에 따른 뷰포트 내 가상 점 이동을 정확히 역산 상쇄
-          const offsetLimitX = window.innerWidth * 1.5;
-          const offsetLimitY = window.innerHeight * 1.5;
+          const offsetLimitX = window.innerWidth * 2;
+          const offsetLimitY = window.innerHeight * 2;
           
           const deltaX = (window.innerWidth * Math.tan(dAlphaRad)) / (2 * Math.tan(FOV_X_RAD / 2));
           const deltaY = (window.innerHeight * Math.tan(dBetaRad)) / (2 * Math.tan(FOV_Y_RAD / 2));
@@ -1325,6 +1357,10 @@
           panY = anchorTouchY + Math.max(-offsetLimitY, Math.min(offsetLimitY, deltaY));
 
           updateStageTransform();
+        } else {
+          // 앵커 고정 전이거나 데스크톱 모드일 때는 기본 100% 불투명도
+          cityStage.style.opacity = 1.0;
+          cityStage.style.pointerEvents = 'auto';
         }
         updateGridTransform();
       }
