@@ -1098,11 +1098,14 @@
 
     // ════════════════════════════════════════════
     // ════════════════════════════════════════════
-    // 인터랙션 (Pan, Orbit, Zoom) 제어 상태
+    // 인터랙션 (Pan, Orbit) 및 가상 SLAM 절대 앵커 상태
     // ════════════════════════════════════════════
     let panX = 0, panY = 0;
     let pitch = 55, yaw = -15;
-    let zoomScale = 0.9;
+    
+    // 현실적인 약 20~25cm 미니어처 절대 규격 고정 (사용자 줌 차단)
+    const ABSOLUTE_SCALE = 0.72;
+    let zoomScale = ABSOLUTE_SCALE;
 
     let isPointerDown = false;
     let dragMode = 'orbit'; // 'orbit' = 카메라 회전, 'pan' = 도시 이동
@@ -1112,21 +1115,65 @@
     let parallaxX = 0, parallaxY = 0;
     let targetParallaxX = 0, targetParallaxY = 0;
 
+    // 가상 SLAM 절대 앵커 변수 (카메라 이동 절대 고정용)
+    let isAnchored = false;
+    let anchorTouchX = 0;
+    let anchorTouchY = 0;
+    let anchorYaw = -15;
+    let anchorBeta = 55;
+    let anchorGamma = 0;
+    let anchorAlpha = 0;
+
+    let currentAlpha = 0;
+    let currentBeta = 55;
+    let currentGamma = 0;
+
     const cityStage = document.getElementById('city-stage');
     const cityGrid = document.getElementById('city-grid');
 
-    // 디오라마 위치 업데이트
+    // 각도 차이 정규화 (방위각 경계 튐 현상 방지)
+    function getAngleDiff(a, b) {
+      let diff = a - b;
+      while (diff < -180) diff += 360;
+      while (diff > 180) diff -= 360;
+      return diff;
+    }
+
+    // 디오라마 위치 및 스테이지 자체 수평 회전(Roll) 업데이트
     function updateStageTransform() {
       cityStage.style.left = `calc(50% + ${panX}px)`;
       cityStage.style.bottom = `calc(240px - ${panY}px)`;
+      
+      // 스마트폰을 눕힐수록(beta 작음) 원근감 왜곡을 낮추고, 세울수록(beta 큼) 투영을 극대화
+      const dynamicPersp = Math.max(700, Math.min(1500, 1500 - (currentBeta * 8)));
+      cityStage.style.perspective = `${dynamicPersp}px`;
+      
+      // 스마트폰의 수평 기울어짐(Roll, gamma)을 상쇄하기 위해 스테이지 전체를 역회전 (수평선 일치)
+      cityStage.style.transform = `translateX(-50%) rotate(${-currentGamma}deg)`;
     }
 
-    // 디오라마 회전 업데이트 (패럴랙스 포함)
+    // 디오라마 3D 회전 업데이트 (Pitch, Yaw 보상 및 절대 스케일 유지)
     function updateGridTransform() {
-      // 마우스 패럴랙스는 뷰 시점(rotate)에 가산하여 몰입형 3D 연출 구현
-      const finalPitch = pitch + (parallaxY * 12);
-      const finalYaw = yaw + (parallaxX * 12);
-      cityGrid.style.transform = `rotateX(${finalPitch}deg) rotateZ(${finalYaw}deg) scale3d(${zoomScale}, ${zoomScale}, ${zoomScale})`;
+      if (isAnchored && gyroActive) {
+        const dAlpha = getAngleDiff(currentAlpha, anchorAlpha);
+        
+        // 1. 디오라마 자체 Pitch는 스마트폰 beta와 정비례하여 수평 매칭 (눕히면 탑뷰, 세우면 사이드뷰)
+        const finalPitch = currentBeta;
+        
+        // 2. Yaw 회전: 스마트폰이 회전하면 디오라마는 반대로 회전하여 가상 방위 고정
+        const finalYaw = anchorYaw - dAlpha;
+        
+        // 3. 뎁스 스케일링: 내려다볼수록(beta 작음) 미세한 원근 배율 보정 (절대 스케일 기반)
+        const depthScaleFactor = 1.0 + (90 - currentBeta) * 0.005;
+        const finalScale = ABSOLUTE_SCALE * depthScaleFactor;
+        
+        cityGrid.style.transform = `rotateX(${finalPitch}deg) rotateZ(${finalYaw}deg) scale3d(${finalScale}, ${finalScale}, ${finalScale})`;
+      } else {
+        // 일반 데스크탑 / 터치 드래그 보간 모드 (자이로 미활성 또는 터치 앵커링 이전)
+        const finalPitch = pitch + (parallaxY * 12);
+        const finalYaw = yaw + (parallaxX * 12);
+        cityGrid.style.transform = `rotateX(${finalPitch}deg) rotateZ(${finalYaw}deg) scale3d(${ABSOLUTE_SCALE}, ${ABSOLUTE_SCALE}, ${ABSOLUTE_SCALE})`;
+      }
     }
 
     // ════════════════════════════════════════════
@@ -1167,12 +1214,22 @@
       startPY = e.clientY;
 
       if (dragMode === 'pan') {
-        panX += dx;
-        panY += dy;
+        if (isAnchored && gyroActive) {
+          // 자이로 상쇄 모드에서는 사용자가 손으로 미는 만큼 앵커 기준 터치 오프셋을 이동시킴 (미세 위치 조정)
+          anchorTouchX += dx;
+          anchorTouchY += dy;
+        } else {
+          panX += dx;
+          panY += dy;
+        }
         updateStageTransform();
       } else if (dragMode === 'orbit') {
-        yaw += dx * 0.4;
-        pitch = Math.max(15, Math.min(85, pitch - dy * 0.4)); // 고각 한계 클램프
+        if (isAnchored && gyroActive) {
+          anchorYaw += dx * 0.4; // 절대 고정 상태에서 로컬 방향만 회전시킴
+        } else {
+          yaw += dx * 0.4;
+          pitch = Math.max(15, Math.min(85, pitch - dy * 0.4)); // 고각 한계 클램프
+        }
         updateGridTransform();
       }
     });
@@ -1182,38 +1239,11 @@
       document.body.style.cursor = 'default';
     });
 
-    // 마우스 휠 줌 기능
-    window.addEventListener('wheel', (e) => {
-      if (!cityStage.classList.contains('show')) return;
-      zoomScale = Math.max(0.4, Math.min(2.0, zoomScale - e.deltaY * 0.001));
-      updateGridTransform();
-    }, { passive: true });
-
-    // 모바일 터치 핀치 줌 제어 (2점 터치)
+    // [절대 뷰포트 고정] 사용자의 가짜 3D 뷰어 방식 줌(핀치/휠) 조작 인터랙션 삭제(Disable)
     let initialTouchDist = 0;
-    window.addEventListener('touchmove', (e) => {
-      if (e.touches.length === 2 && cityStage.classList.contains('show')) {
-        let dist = Math.hypot(
-          e.touches[0].clientX - e.touches[1].clientX,
-          e.touches[0].clientY - e.touches[1].clientY
-        );
-        if (initialTouchDist === 0) {
-          initialTouchDist = dist;
-        } else {
-          let factor = dist / initialTouchDist;
-          zoomScale = Math.max(0.4, Math.min(2.0, zoomScale * (1 + (factor - 1) * 0.2)));
-          initialTouchDist = dist;
-          updateGridTransform();
-        }
-      }
-    }, { passive: true });
-
-    window.addEventListener('touchend', (e) => {
-      if (e.touches.length < 2) initialTouchDist = 0;
-    });
 
     // ════════════════════════════════════════════
-    // 자이로센서 시점 연동 (Mobile AR 모션)
+    // 자이로센서 시점 연동 (Mobile AR 모션 및 탄젠트 SLAM 상쇄)
     // ════════════════════════════════════════════
     let gyroActive = false;
     let initialBeta = null;
@@ -1223,22 +1253,26 @@
       if (!window.DeviceOrientationEvent) return;
 
       const handleOrientation = (e) => {
-        if (!gyroActive || isPointerDown) return;
-        if (!e.beta && !e.gamma) return;
+        if (!gyroActive) return;
+        if (e.beta === null || e.gamma === null) return;
 
-        // 기준각 할당
-        if (initialBeta === null) {
-          initialBeta = e.beta;
-          initialGamma = e.gamma;
-          return;
+        currentBeta = e.beta;
+        currentGamma = e.gamma;
+        currentAlpha = e.alpha !== null ? e.alpha : 0;
+
+        // 터치 드래그 및 자이로 고정 활성화 전까지만 단순 2.5D 패럴랙스로 작동
+        if (!isPointerDown && !isAnchored) {
+          if (initialBeta === null) {
+            initialBeta = e.beta;
+            initialGamma = e.gamma;
+            return;
+          }
+          let deltaBeta = e.beta - initialBeta;
+          let deltaGamma = e.gamma - initialGamma;
+
+          targetParallaxX = Math.max(-1, Math.min(1, deltaGamma * 0.05));
+          targetParallaxY = Math.max(-1, Math.min(1, deltaBeta * 0.05));
         }
-
-        // 상대적인 기울기로 패럴랙스 타겟 오프셋 매핑
-        let deltaBeta = e.beta - initialBeta;
-        let deltaGamma = e.gamma - initialGamma;
-
-        targetParallaxX = Math.max(-1, Math.min(1, deltaGamma * 0.05));
-        targetParallaxY = Math.max(-1, Math.min(1, deltaBeta * 0.05));
       };
 
       // iOS 13+ 권한 확인 대응
@@ -1257,13 +1291,38 @@
       }
     }
 
-    // 60FPS 보간 렌더 루프 (패럴랙스 감도 증대)
+    // 60FPS 보간 및 기하 투영 역산 SLAM 상쇄 렌더 루프
     function renderLoop() {
       // 부드러운 Lerp 적용
       parallaxX += (targetParallaxX - parallaxX) * 0.08;
       parallaxY += (targetParallaxY - parallaxY) * 0.08;
       
       if (cityStage.classList.contains('show')) {
+        if (isAnchored && gyroActive) {
+          // 스마트폰 후면 카메라 화각(FOV) 추정값 (수평 60도, 수직 75도)
+          const FOV_X_RAD = 60 * Math.PI / 180;
+          const FOV_Y_RAD = 75 * Math.PI / 180;
+
+          // 폰 움직임 각도 변위 계산
+          const dAlpha = getAngleDiff(currentAlpha, anchorAlpha);
+          const dBeta = currentBeta - anchorBeta;
+
+          const dAlphaRad = dAlpha * Math.PI / 180;
+          const dBetaRad = dBeta * Math.PI / 180;
+
+          // 탄젠트 역투영 삼각함수 공식을 활용해 디바이스 회전에 따른 뷰포트 내 가상 점 이동을 정확히 역산 상쇄
+          const offsetLimitX = window.innerWidth * 1.5;
+          const offsetLimitY = window.innerHeight * 1.5;
+          
+          const deltaX = (window.innerWidth * Math.tan(dAlphaRad)) / (2 * Math.tan(FOV_X_RAD / 2));
+          const deltaY = (window.innerHeight * Math.tan(dBetaRad)) / (2 * Math.tan(FOV_Y_RAD / 2));
+
+          // 폰을 돌리거나 숙일 때 디오라마가 실제 책상 위 앵커 포인트에 가만히 머물게 물리적 고정
+          panX = anchorTouchX - Math.max(-offsetLimitX, Math.min(offsetLimitX, deltaX));
+          panY = anchorTouchY + Math.max(-offsetLimitY, Math.min(offsetLimitY, deltaY));
+
+          updateStageTransform();
+        }
         updateGridTransform();
       }
       requestAnimationFrame(renderLoop);
@@ -1587,17 +1646,42 @@
         
         setStatus('📡 책상 바닥을 향하고 화면을 탭하여 고정하세요');
 
-        // 첫 탭/클릭으로 도시 투사 시작 바인딩
+        // 첫 탭/클릭으로 도시 투사 시작 바인딩 (책상 평면 앵커 고정)
         const triggerAnchor = (e) => {
+          if (isAnchored) return;
           // UI 조작 패널이나 종료 버튼을 탭한 경우 버블링 차단
-          if (e.target.closest('#btn-exit') || e.target.closest('#dashboard')) return;
+          if (e.target.closest('#btn-exit') || e.target.closest('#dashboard') || e.target.closest('#btn-dev-toggle')) return;
+
+          // 터치 혹은 클릭한 실제 화면 위치 캡처
+          let clientX = window.innerWidth / 2;
+          let clientY = window.innerHeight - 240; // 기본 오프셋 센터
+
+          if (e.touches && e.touches.length > 0) {
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+          } else if (e.clientX !== undefined) {
+            clientX = e.clientX;
+            clientY = e.clientY;
+          }
 
           document.getElementById('scanning-overlay').style.display = 'none';
           document.getElementById('crosshair').classList.remove('pulse', 'show');
           cityStage.classList.add('show');
           
-          // 도시 초기화 배치
-          panX = 0; panY = 0;
+          // 터치한 위치를 가상 바닥 앵커 좌표로 변환
+          anchorTouchX = clientX - (window.innerWidth / 2);
+          anchorTouchY = (window.innerHeight - 240) - clientY;
+          
+          panX = anchorTouchX;
+          panY = anchorTouchY;
+          
+          // 자이로 기준 회전 고정
+          anchorAlpha = currentAlpha;
+          anchorBeta = currentBeta;
+          anchorGamma = currentGamma;
+          anchorYaw = yaw; // 현재 yaw(기본값 -15) 기준 고정
+          isAnchored = true;
+
           updateStageTransform();
           
           analyzeDeskEnvironment(); // 책상 환경 조도를 분석해 어울리는 테마 자동 적용
@@ -1662,6 +1746,9 @@
 
       isPrinting = false;
       wobbleAnimId = null;
+      isAnchored = false;
+      initialBeta = null;
+      initialGamma = null;
 
       // UI 초기화
       document.body.classList.remove('night-mode');
