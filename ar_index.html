@@ -625,6 +625,8 @@
       background: linear-gradient(transparent, rgba(0, 240, 255, 0.65));
       transform-origin: bottom center;
       transform-style: preserve-3d;
+      transform: rotateX(-90deg) translate3d(0, -180px, 0); /* 초기 수직 정렬 및 대기 상태 공중 배치 */
+      opacity: 0; /* 애니메이션 딜레이 동안 가로선 깜빡임 방지용 숨김 처리 */
       animation: rain-fall-3d 0.8s linear infinite;
     }
     @keyframes rain-fall-3d {
