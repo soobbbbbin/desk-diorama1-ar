@@ -746,11 +746,14 @@
   </div>
 
   <script>
-    // ⚠️ 자동 캐시 버스팅 게이트웨이: 기존 큐알(파라미터 없는 주소) 접속 시 강제로 타임스탬프를 덧붙여 캐시 오작동 차단
+    // ⚠️ 강력한 캐시 버스팅 게이트웨이: Safari의 로컬 캐시 락을 방지하기 위해 v 파라미터가 5초 이상 오래되었으면 최신 타임스탬프로 강제 리다이렉트
     (function() {
       const urlParams = new URLSearchParams(window.location.search);
-      if (!urlParams.has('v')) {
-        urlParams.set('v', Date.now());
+      const v = urlParams.get('v');
+      const now = Date.now();
+      
+      if (!v || (now - parseInt(v)) > 5000) {
+        urlParams.set('v', now);
         window.location.replace(window.location.pathname + '?' + urlParams.toString() + window.location.hash);
       }
     })();
@@ -1382,9 +1385,6 @@
             b.classList.remove('printing');
           });
 
-          // 모바일 자이로 센서 시작
-          startGyroscope();
-          
           // 실시간 날씨 API 자동 연동 작동
           autoFetchWeather();
         }
@@ -1576,6 +1576,9 @@
     let cameraStream = null;
 
     async function startAR() {
+      // 폰 자이로 센서 즉시 권한 요청 및 데이터 연동 시작 (User Interaction 컨텍스트 준수)
+      startGyroscope();
+
       const startBtn = document.getElementById('btn-start');
       startBtn.textContent = '카메라 연결 검증 중...';
       startBtn.disabled = true;
