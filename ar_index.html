@@ -2,10 +2,10 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
-  <title>Desk Diorama AR</title>
+  <title>Desk Diorama AR — Premium Hologram Simulator</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
 
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -13,11 +13,12 @@
     html, body {
       width: 100%; height: 100%;
       overflow: hidden;
-      background: #080c18;
-      font-family: 'Inter', -apple-system, sans-serif;
-      color: #e0e8f8;
+      background: #030712;
+      font-family: 'Outfit', -apple-system, sans-serif;
+      color: #f3f4f6;
       -webkit-tap-highlight-color: transparent;
-      touch-action: manipulation;
+      touch-action: none;
+      user-select: none;
     }
 
     /* ══════════════════════════════
@@ -30,24 +31,245 @@
       object-fit: cover;
       z-index: 1;
       display: none;
-      transform: scaleX(-1); /* 전면 카메라 미러 보정 */
+      transform: scaleX(-1); /* 전면 카메라 거울 반사 해결 */
+      transition: filter 0.5s ease;
     }
-    #cam-video.rear { transform: scaleX(1); } /* 후면 카메라 */
+    #cam-video.rear { transform: scaleX(1); } /* 후면 카메라는 거울 반사 해제 */
+    
+    body.night-mode #cam-video {
+      filter: brightness(0.35) contrast(1.1) saturate(0.8) sepia(0.1);
+    }
 
     /* ══════════════════════════════
-       3D 건물 캔버스 오버레이
+       CSS 3D 디오라마 스테이지
     ══════════════════════════════ */
-    #ar-canvas {
+    #city-stage {
       position: fixed;
-      inset: 0;
-      width: 100%; height: 100%;
-      z-index: 2;
-      pointer-events: none;
+      bottom: 240px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 380px; height: 380px;
+      z-index: 5;
+      pointer-events: auto;
+      perspective: 1000px;
       display: none;
+      transition: opacity 0.5s ease;
+    }
+    #city-stage.show { display: block; }
+
+    #city-grid {
+      width: 100%; height: 100%;
+      transform-style: preserve-3d;
+      position: relative;
+      transform: rotateX(60deg) rotateZ(-20deg);
+    }
+
+    /* 디오라마 기단판 (Base Plate) */
+    .diorama-base {
+      position: absolute;
+      width: 320px; height: 320px;
+      left: 30px; top: 30px;
+      background: rgba(8, 18, 38, 0.7);
+      border: 2px solid rgba(0, 212, 255, 0.4);
+      border-radius: 16px;
+      box-shadow: 0 0 30px rgba(0, 212, 255, 0.2), inset 0 0 20px rgba(0, 212, 255, 0.2);
+      transform: translateZ(-2px);
+      transform-style: preserve-3d;
+      backdrop-filter: blur(8px);
+    }
+
+    .diorama-base::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image: 
+        linear-gradient(rgba(0, 212, 255, 0.15) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 212, 255, 0.15) 1px, transparent 1px);
+      background-size: 20px 20px;
+      border-radius: 14px;
+    }
+
+    /* 3D 건물 스타일 */
+    .building-wrap {
+      position: absolute;
+      transform-style: preserve-3d;
+      transition: left 0.4s cubic-bezier(0.25, 1, 0.5, 1), top 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    .building {
+      position: absolute;
+      transform-origin: bottom center;
+      transform-style: preserve-3d;
+      transform: scaleY(0.001);
+      transition: transform 0.05s linear;
+    }
+
+    .b-face {
+      position: absolute;
+      top: 0; left: 0;
+      backface-visibility: hidden;
+      transform-style: preserve-3d;
+      transition: background 0.4s, border 0.4s, box-shadow 0.4s;
+    }
+
+    /* 건물 앞면/뒷면 공통 */
+    .b-face.front, .b-face.back {
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    /* 건물 좌측/우측 공통 */
+    .b-face.left, .b-face.right {
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    /* 창문 그리드 오버레이 클래스 */
+    .window-layer {
+      position: absolute;
+      inset: 0;
+      background-size: 8px 10px;
+      opacity: 0.85;
+      transition: opacity 0.5s;
     }
 
     /* ══════════════════════════════
-       스플래시 화면
+       아키타입 테마 정의 (Vibrant & Premium)
+    ══════════════════════════════ */
+
+    /* 1. Chaos Neon District (Cyberpunk) */
+    .theme-chaos-neon .diorama-base {
+      border-color: rgba(255, 0, 127, 0.6);
+      box-shadow: 0 0 30px rgba(255, 0, 127, 0.25), inset 0 0 20px rgba(255, 0, 127, 0.2);
+    }
+    .theme-chaos-neon .b-face.front, .theme-chaos-neon .b-face.back {
+      background: #110d1d;
+    }
+    .theme-chaos-neon .b-face.left, .theme-chaos-neon .b-face.right {
+      background: #090610;
+    }
+    .theme-chaos-neon .window-layer {
+      background-image: 
+        linear-gradient(rgba(255, 0, 127, 0.65) 1.5px, transparent 1.5px),
+        linear-gradient(90deg, rgba(0, 240, 255, 0.65) 1.5px, transparent 1.5px);
+    }
+    .theme-chaos-neon .b-face.top {
+      background: #ff007f;
+      box-shadow: 0 0 15px #ff007f;
+    }
+    .theme-chaos-neon .antenna {
+      background: #00ffff;
+      box-shadow: 0 0 8px #00ffff;
+    }
+
+    /* 2. Minimal Harmony City (Nordic Calm) */
+    .theme-minimal-harmony .diorama-base {
+      border-color: rgba(142, 194, 156, 0.6);
+      box-shadow: 0 0 30px rgba(142, 194, 156, 0.25), inset 0 0 20px rgba(142, 194, 156, 0.2);
+    }
+    .theme-minimal-harmony .b-face.front, .theme-minimal-harmony .b-face.back {
+      background: #f3f4f6;
+    }
+    .theme-minimal-harmony .b-face.left, .theme-minimal-harmony .b-face.right {
+      background: #e5e7eb;
+    }
+    .theme-minimal-harmony .window-layer {
+      background-image: 
+        linear-gradient(rgba(245, 158, 11, 0.4) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.8) 1px, transparent 1px);
+    }
+    .theme-minimal-harmony .b-face.top {
+      background: #54a065;
+      box-shadow: inset 0 0 8px rgba(0,0,0,0.15);
+    }
+    .theme-minimal-harmony .antenna {
+      background: #9ca3af;
+    }
+
+    /* 3. Dynamic Flow City (Futuristic Metallic) */
+    .theme-dynamic-flow .diorama-base {
+      border-color: rgba(0, 120, 255, 0.6);
+      box-shadow: 0 0 30px rgba(0, 120, 255, 0.25), inset 0 0 20px rgba(0, 120, 255, 0.2);
+    }
+    .theme-dynamic-flow .b-face.front, .theme-dynamic-flow .b-face.back {
+      background: #1e293b;
+    }
+    .theme-dynamic-flow .b-face.left, .theme-dynamic-flow .b-face.right {
+      background: #0f172a;
+    }
+    .theme-dynamic-flow .window-layer {
+      background-image: 
+        linear-gradient(rgba(0, 120, 255, 0.5) 1.5px, transparent 1.5px),
+        linear-gradient(90deg, rgba(0, 212, 255, 0.5) 1.5px, transparent 1.5px);
+    }
+    .theme-dynamic-flow .b-face.top {
+      background: #00d4ff;
+      box-shadow: 0 0 18px rgba(0, 212, 255, 0.8);
+    }
+    .theme-dynamic-flow .antenna {
+      background: #007cff;
+      box-shadow: 0 0 10px #007cff;
+    }
+
+    /* 4. Silent Ruins City (Post-Apocalyptic Amber) */
+    .theme-silent-ruins .diorama-base {
+      border-color: rgba(180, 100, 40, 0.5);
+      box-shadow: 0 0 30px rgba(180, 100, 40, 0.2), inset 0 0 20px rgba(180, 100, 40, 0.15);
+    }
+    .theme-silent-ruins .b-face.front, .theme-silent-ruins .b-face.back {
+      background: #2b2520;
+    }
+    .theme-silent-ruins .b-face.left, .theme-silent-ruins .b-face.right {
+      background: #1e1915;
+    }
+    .theme-silent-ruins .window-layer {
+      background-image: 
+        linear-gradient(rgba(249, 115, 22, 0.3) 1.5px, transparent 1.5px),
+        linear-gradient(90deg, rgba(168, 85, 247, 0.15) 1.5px, transparent 1.5px);
+    }
+    .theme-silent-ruins .b-face.top {
+      background: #4a473d;
+      box-shadow: inset 0 0 8px rgba(0,0,0,0.4);
+    }
+    .theme-silent-ruins .antenna {
+      background: #6b7280;
+    }
+
+    /* 밤 모드일 때 창문 발광 극대화 */
+    body.night-mode .theme-chaos-neon .window-layer {
+      filter: drop-shadow(0 0 3px #ff007f) drop-shadow(0 0 5px #00ffff);
+      opacity: 1;
+    }
+    body.night-mode .theme-minimal-harmony .window-layer {
+      filter: drop-shadow(0 0 2px #f59e0b);
+      opacity: 0.95;
+    }
+    body.night-mode .theme-dynamic-flow .window-layer {
+      filter: drop-shadow(0 0 4px #00d4ff);
+      opacity: 1;
+    }
+    body.night-mode .theme-silent-ruins .window-layer {
+      filter: drop-shadow(0 0 2px #f97316);
+      opacity: 0.7;
+    }
+
+    /* 3D 프린팅 중일 때 지붕이 레이저 효과로 발광 */
+    .building.printing .b-face.top {
+      background: #00f0ff !important;
+      box-shadow: 0 0 25px #00f0ff, 0 0 50px #00f0ff !important;
+    }
+
+    /* 그림자 */
+    .city-shadow {
+      position: absolute;
+      bottom: -10px; left: 50%;
+      transform: translateX(-50%);
+      width: 340px; height: 340px;
+      background: radial-gradient(ellipse, rgba(0,0,0,0.5) 0%, transparent 70%);
+      border-radius: 50%;
+      pointer-events: none;
+    }
+
+    /* ══════════════════════════════
+       스플래시 & 스캔 화면
     ══════════════════════════════ */
     #splash {
       position: fixed;
@@ -57,47 +279,70 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      background: radial-gradient(ellipse at 50% 40%, #0d2040 0%, #080c18 70%);
-      transition: opacity 0.5s;
+      background: radial-gradient(circle at 50% 30%, #0d1e3d 0%, #030712 100%);
+      transition: opacity 0.6s ease;
+      padding: 24px;
     }
     #splash.gone { opacity: 0; pointer-events: none; }
 
-    .s-icon { font-size: 64px; margin-bottom: 20px; animation: float 3s ease-in-out infinite; }
+    .glow-circle {
+      position: relative;
+      width: 140px; height: 140px;
+      border-radius: 50%;
+      background: rgba(0, 212, 255, 0.03);
+      border: 1px solid rgba(0, 212, 255, 0.25);
+      box-shadow: 0 0 40px rgba(0, 212, 255, 0.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 32px;
+      animation: pulse-ring 2.5s infinite;
+    }
+    @keyframes pulse-ring {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 40px rgba(0, 212, 255, 0.15); }
+      50% { transform: scale(1.05); box-shadow: 0 0 60px rgba(0, 212, 255, 0.3); }
+    }
+
+    .s-icon { font-size: 54px; animation: float 3s ease-in-out infinite; }
     @keyframes float {
-      0%,100% { transform: translateY(0); }
-      50%      { transform: translateY(-10px); }
+      0%, 100% { transform: translateY(0) rotate(0deg); }
+      50%      { transform: translateY(-8px) rotate(2deg); }
     }
 
     .s-title {
-      font-size: 26px; font-weight: 700;
-      color: #00d4ff;
-      text-shadow: 0 0 30px rgba(0,212,255,0.7);
-      margin-bottom: 8px;
+      font-size: 28px; font-weight: 700;
+      background: linear-gradient(135deg, #00d4ff 0%, #007cff 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 12px;
+      letter-spacing: 0.5px;
+      text-shadow: 0 0 40px rgba(0,212,255,0.25);
     }
     .s-sub {
-      font-size: 13px; color: #5a7090;
+      font-size: 14px; color: #6b7280;
       text-align: center; line-height: 1.6;
-      margin-bottom: 44px;
-      padding: 0 32px;
+      margin-bottom: 48px;
+      max-width: 320px;
     }
 
-    #btn-start {
-      padding: 18px 52px;
-      font-size: 16px; font-weight: 700;
-      letter-spacing: 1px;
+    .btn-premium {
+      padding: 16px 44px;
+      font-size: 16px; font-weight: 600;
+      letter-spacing: 0.5px;
       color: #fff;
       background: linear-gradient(135deg, #00d4ff 0%, #0055ff 100%);
-      border: none; border-radius: 60px;
+      border: none; border-radius: 30px;
       cursor: pointer;
-      box-shadow: 0 0 40px rgba(0,120,255,0.5), 0 6px 24px rgba(0,0,0,0.5);
-      transition: transform .15s, box-shadow .15s;
+      box-shadow: 0 0 30px rgba(0, 120, 255, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.2);
+      transition: transform 0.15s, box-shadow 0.15s;
     }
-    #btn-start:active { transform: scale(0.94); }
-
-    .s-note { margin-top: 20px; font-size: 11px; color: #2a4060; }
+    .btn-premium:hover {
+      box-shadow: 0 0 40px rgba(0, 120, 255, 0.6);
+    }
+    .btn-premium:active { transform: scale(0.96); }
 
     /* ══════════════════════════════
-       AR 오버레이 UI
+       AR 오버레이 UI & 가상 HUD
     ══════════════════════════════ */
     #ar-ui {
       position: fixed;
@@ -108,138 +353,263 @@
     }
     #ar-ui.on { display: block; }
 
-    /* 상단 상태바 */
     #status {
       position: absolute;
-      top: 20px; left: 50%;
+      top: 24px; left: 50%;
       transform: translateX(-50%);
-      padding: 10px 22px;
-      background: rgba(0,0,0,0.55);
+      padding: 12px 24px;
+      background: rgba(3, 7, 18, 0.7);
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
-      border: 1px solid rgba(0,212,255,0.3);
+      border: 1px solid rgba(0, 212, 255, 0.25);
       border-radius: 30px;
       font-size: 13px; font-weight: 600;
       color: #00d4ff;
+      letter-spacing: 0.5px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
       white-space: nowrap;
       pointer-events: none;
     }
 
-    /* 중앙 타겟 조준점 */
     #crosshair {
       position: absolute;
       top: 50%; left: 50%;
       transform: translate(-50%, -50%);
-      width: 60px; height: 60px;
+      width: 80px; height: 80px;
       pointer-events: none;
-      opacity: 0.85;
+      opacity: 0;
+      display: none;
+      transition: opacity 0.3s;
+    }
+    #crosshair.show { display: block; opacity: 0.8; }
+    #crosshair svg { width: 100%; height: 100%; }
+    
+    @keyframes scanner-pulse {
+      0%   { transform: translate(-50%,-50%) scale(1); opacity: 0.8; }
+      50%  { transform: translate(-50%,-50%) scale(1.1); opacity: 0.4; }
+      100% { transform: translate(-50%,-50%) scale(1); opacity: 0.8; }
+    }
+    #crosshair.pulse { animation: scanner-pulse 1.5s ease-in-out infinite; }
+
+    /* 스캔 HUD 그리드 연출 */
+    #scanning-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 3;
+      border: 20px solid rgba(0, 212, 255, 0.05);
+      pointer-events: none;
       display: none;
     }
-    #crosshair.show { display: block; }
-    #crosshair svg { width: 100%; height: 100%; }
-
-    /* 탭 유도 애니메이션 */
-    @keyframes tap-pulse {
-      0%   { transform: translate(-50%,-50%) scale(1); opacity: 0.9; }
-      50%  { transform: translate(-50%,-50%) scale(1.15); opacity: 0.5; }
-      100% { transform: translate(-50%,-50%) scale(1); opacity: 0.9; }
-    }
-    #crosshair.pulse { animation: tap-pulse 1.2s ease-in-out infinite; }
-
-    /* 하단 패널 */
-    #bottom {
+    #scanning-overlay::before {
+      content: '';
       position: absolute;
-      bottom: 32px; left: 50%;
-      transform: translateX(-50%);
-      width: 88%; max-width: 380px;
-      background: rgba(0,0,0,0.6);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border: 1px solid rgba(0,212,255,0.2);
-      border-radius: 22px;
-      padding: 16px 18px;
-      pointer-events: auto;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: linear-gradient(rgba(0, 212, 255, 0) 90%, rgba(0, 212, 255, 0.1) 95%, rgba(0, 212, 255, 0.2) 100%);
+      background-size: 100% 200%;
+      animation: scan-line 3s linear infinite;
+    }
+    @keyframes scan-line {
+      0% { background-position-y: 100%; }
+      100% { background-position-y: -100%; }
     }
 
-    .prog-header {
+    /* 하단 패널 (Glassmorphism Dashboard) */
+    #dashboard {
+      position: absolute;
+      bottom: 24px; left: 50%;
+      transform: translateX(-50%);
+      width: 90%; max-width: 420px;
+      background: rgba(3, 7, 18, 0.7);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 24px;
+      padding: 20px;
+      pointer-events: auto;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    }
+
+    .hud-title-container {
       display: flex;
       justify-content: space-between;
-      font-size: 12px; color: #5a7090;
-      margin-bottom: 8px;
-    }
-    .prog-track {
-      width: 100%; height: 5px;
-      background: #111d2e;
-      border-radius: 3px; overflow: hidden;
+      align-items: center;
       margin-bottom: 14px;
     }
-    .prog-fill {
+    .hud-archetype {
+      font-size: 18px; font-weight: 700;
+      color: #00d4ff;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      text-shadow: 0 0 10px rgba(0,212,255,0.3);
+    }
+    .hud-stats {
+      font-size: 11px; color: #6b7280;
+      font-family: monospace;
+    }
+
+    /* 아키타입 선택기 */
+    .archetype-selector {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      margin-bottom: 16px;
+    }
+    .arch-btn {
+      padding: 8px 4px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      color: #9ca3af;
+      font-size: 10px; font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.3s;
+    }
+    .arch-btn:hover { background: rgba(255, 255, 255, 0.1); }
+    .arch-btn.active {
+      color: #fff;
+      font-weight: 700;
+    }
+    
+    /* 아키타입별 액티브 컬러 */
+    .arch-btn.active.chaos {
+      background: rgba(255, 0, 127, 0.2);
+      border-color: #ff007f;
+      box-shadow: 0 0 8px rgba(255, 0, 127, 0.4);
+    }
+    .arch-btn.active.harmony {
+      background: rgba(84, 160, 101, 0.2);
+      border-color: #54a065;
+      box-shadow: 0 0 8px rgba(84, 160, 101, 0.4);
+    }
+    .arch-btn.active.flow {
+      background: rgba(0, 212, 255, 0.2);
+      border-color: #00d4ff;
+      box-shadow: 0 0 8px rgba(0, 212, 255, 0.4);
+    }
+    .arch-btn.active.ruins {
+      background: rgba(180, 100, 40, 0.25);
+      border-color: #b46428;
+      box-shadow: 0 0 8px rgba(180, 100, 40, 0.4);
+    }
+
+    /* 제어 영역 */
+    .controls-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .slider-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .slider-title {
+      font-size: 11px; color: #9ca3af;
+      display: flex; justify-content: space-between;
+    }
+    .slider-title span { color: #f3f4f6; font-weight: 600; }
+
+    input[type=range] {
+      -webkit-appearance: none;
+      width: 100%; height: 5px;
+      border-radius: 4px;
+      background: #1f2937;
+      outline: none;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: #00d4ff;
+      cursor: pointer;
+      box-shadow: 0 0 8px rgba(0, 212, 255, 0.6);
+      transition: transform 0.1s;
+    }
+    input[type=range]::-webkit-slider-thumb:active { transform: scale(1.3); }
+
+    /* 토글 스위치 */
+    .toggle-row {
+      display: flex;
+      gap: 10px;
+    }
+    .toggle-btn {
+      flex: 1;
+      padding: 10px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      color: #9ca3af;
+      font-size: 11px; font-weight: 600;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      gap: 6px;
+      transition: all 0.3s;
+    }
+    .toggle-btn:active { transform: scale(0.97); }
+    .toggle-btn.active {
+      background: rgba(0, 212, 255, 0.15);
+      border-color: rgba(0, 212, 255, 0.4);
+      color: #00d4ff;
+      box-shadow: 0 0 10px rgba(0, 212, 255, 0.15);
+    }
+
+    /* 프린팅 진행바 */
+    .print-prog-bar {
+      height: 4px;
+      background: #1f2937;
+      border-radius: 2px;
+      overflow: hidden;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .print-prog-fill {
       height: 100%; width: 0%;
       background: linear-gradient(90deg, #00d4ff, #0055ff);
-      border-radius: 3px;
-      transition: width .1s linear;
+      border-radius: 2px;
+      transition: width 0.05s linear;
     }
 
-    #btn-exit {
+    /* 상호작용 제안 가이드 캡션 */
+    #interaction-tip {
+      font-size: 11px; color: #4b5563;
+      text-align: center;
+      margin-bottom: 12px;
+      font-style: italic;
+    }
+
+    .btn-exit-panel {
       display: block; width: 100%;
-      padding: 11px;
-      background: rgba(255,255,255,0.06);
-      border: 1px solid rgba(255,255,255,0.1);
+      padding: 10px;
+      background: rgba(239, 68, 68, 0.08);
+      border: 1px solid rgba(239, 68, 68, 0.2);
       border-radius: 12px;
-      color: #4a6080; font-size: 12px;
+      color: #ef4444; font-size: 12px; font-weight: 600;
       cursor: pointer;
+      transition: all 0.3s;
     }
-    #btn-exit:active { background: rgba(255,255,255,0.14); }
+    .btn-exit-panel:hover { background: rgba(239, 68, 68, 0.15); }
 
-    /* 건물 CSS 3D 컨테이너 */
-    #city-stage {
+    /* ══════════════════════════════
+       날씨 비 이펙트
+    ══════════════════════════════ */
+    #rain-container {
       position: fixed;
-      bottom: 180px;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 340px; height: 340px;
-      z-index: 5;
-      pointer-events: auto;
-      cursor: pointer;
-      display: none;
-      perspective: 800px;
-    }
-    #city-stage.show { display: block; }
-
-    #city-grid {
-      width: 100%; height: 100%;
-      transform-style: preserve-3d;
-      transform: rotateX(55deg) rotateZ(-15deg);
-      position: relative;
-      transition: transform 0.4s ease;
-    }
-
-    .building-wrap {
-      position: absolute;
-      transform-style: preserve-3d;
-    }
-
-    .building {
-      position: absolute;
-      transform-origin: bottom center;
-      transform-style: preserve-3d;
-      transition: transform 0.05s linear;
-    }
-
-    .b-face {
-      position: absolute;
-      backface-visibility: hidden;
-    }
-
-    /* 그림자 */
-    .city-shadow {
-      position: absolute;
-      bottom: -2px; left: 50%;
-      transform: translateX(-50%);
-      width: 290px; height: 290px;
-      background: radial-gradient(ellipse, rgba(0,0,0,0.35) 0%, transparent 70%);
-      border-radius: 50%;
+      inset: 0;
+      z-index: 4;
       pointer-events: none;
+    }
+    .rain-drop {
+      position: absolute;
+      width: 1px; height: 60px;
+      background: linear-gradient(transparent, rgba(0, 212, 255, 0.35));
+      animation: rain-fall 0.7s linear infinite;
+    }
+    @keyframes rain-fall {
+      0% { transform: translateY(-100px); }
+      100% { transform: translateY(100vh); }
     }
   </style>
 </head>
@@ -248,302 +618,790 @@
   <!-- 카메라 영상 배경 -->
   <video id="cam-video" autoplay playsinline muted></video>
 
-  <!-- 3D 건물 씬 -->
+  <!-- 가상 비 이펙트 -->
+  <div id="rain-container"></div>
+
+  <!-- 스캔 라인 효과 -->
+  <div id="scanning-overlay"></div>
+
+  <!-- 3D 건물 디오라마 -->
   <div id="city-stage">
     <div class="city-shadow"></div>
-    <div id="city-grid"></div>
+    <div id="city-grid">
+      <!-- 디오라마 판넬 -->
+      <div class="diorama-base"></div>
+      <!-- 빌딩들 (JavaScript로 자동 구성) -->
+      <div id="buildings-root" style="transform-style: preserve-3d;"></div>
+    </div>
   </div>
 
   <!-- AR UI 오버레이 -->
   <div id="ar-ui">
-    <div id="status">📷 카메라 준비 중...</div>
+    <div id="status">📷 카메라 설정 중...</div>
 
-    <!-- 조준점 -->
+    <!-- 스캔 조준점 -->
     <div id="crosshair">
       <svg viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
         <circle cx="30" cy="30" r="28" stroke="#00d4ff" stroke-width="1.5" stroke-dasharray="4 4"/>
-        <circle cx="30" cy="30" r="4"  fill="#00d4ff"/>
-        <line x1="30" y1="2"  x2="30" y2="16" stroke="#00d4ff" stroke-width="1.5"/>
-        <line x1="30" y1="44" x2="30" y2="58" stroke="#00d4ff" stroke-width="1.5"/>
-        <line x1="2"  y1="30" x2="16" y2="30" stroke="#00d4ff" stroke-width="1.5"/>
-        <line x1="44" y1="30" x2="58" y2="30" stroke="#00d4ff" stroke-width="1.5"/>
+        <circle cx="30" cy="30" r="6"  fill="rgba(0, 212, 255, 0.2)" stroke="#00d4ff" stroke-width="1.5"/>
+        <line x1="30" y1="2"  x2="30" y2="12" stroke="#00d4ff" stroke-width="1.5"/>
+        <line x1="30" y1="48" x2="30" y2="58" stroke="#00d4ff" stroke-width="1.5"/>
+        <line x1="2"  y1="30" x2="12" y2="30" stroke="#00d4ff" stroke-width="1.5"/>
+        <line x1="48"  y1="30" x2="58" y2="30" stroke="#00d4ff" stroke-width="1.5"/>
       </svg>
     </div>
 
-    <div id="bottom">
-      <div class="prog-header">
-        <span id="prog-label">건물 생성</span>
-        <span id="prog-pct">0%</span>
+    <!-- 유리 조작 대시보드 -->
+    <div id="dashboard">
+      <div class="hud-title-container">
+        <div class="hud-archetype" id="hud-archetype-name">Chaos Neon</div>
+        <div class="hud-stats" id="hud-city-stats">GRID: 5x5 | ACTIVE</div>
       </div>
-      <div class="prog-track">
-        <div class="prog-fill" id="prog-fill"></div>
+
+      <!-- 아키타입 선택 탭 -->
+      <div class="archetype-selector">
+        <button class="arch-btn active chaos" onclick="switchArchetype('chaos')">Chaos</button>
+        <button class="arch-btn harmony" onclick="switchArchetype('harmony')">Minimal</button>
+        <button class="arch-btn flow" onclick="switchArchetype('flow')">Dynamic</button>
+        <button class="arch-btn ruins" onclick="switchArchetype('ruins')">Ruins</button>
       </div>
-      <button id="btn-exit" onclick="stopAR()">✕  AR 종료</button>
+
+      <!-- 빌드 프로세스 진행바 -->
+      <div class="print-prog-bar" id="print-bar">
+        <div class="print-prog-fill" id="print-fill"></div>
+      </div>
+
+      <!-- 제어 슬라이더 & 토글 버튼 -->
+      <div class="controls-grid">
+        <div class="slider-group">
+          <div class="slider-title">어수선함 (Density) <span id="clutter-val">70%</span></div>
+          <input type="range" id="slider-clutter" min="10" max="100" value="70" oninput="onClutterSlider(this.value)">
+        </div>
+        <div class="slider-group">
+          <div class="slider-title">활동 강도 (Wobble) <span id="activity-val">0%</span></div>
+          <input type="range" id="slider-activity" min="0" max="100" value="0" oninput="onActivitySlider(this.value)">
+        </div>
+      </div>
+
+      <div class="controls-grid">
+        <div class="toggle-row">
+          <button class="toggle-btn active" id="btn-night" onclick="toggleNightMode()">🌙 야간 조명</button>
+          <button class="toggle-btn" id="btn-rain" onclick="toggleRainMode()">🌧️ 날씨: 비</button>
+        </div>
+      </div>
+
+      <div id="interaction-tip">
+        팁: 도시를 마우스/터치 드래그로 책상 위에 정렬하고,<br>빈 배경을 드래그해 카메라 각도를 움직이세요.
+      </div>
+
+      <button class="btn-exit-panel" onclick="stopAR()">✕ AR 종료 및 복귀</button>
     </div>
   </div>
 
-  <!-- 스플래시 -->
+  <!-- 스플래시 화면 -->
   <div id="splash">
-    <div class="s-icon">🏙️</div>
+    <div class="glow-circle">
+      <div class="s-icon">🏙️</div>
+    </div>
     <div class="s-title">Desk Diorama AR</div>
-    <div class="s-sub">후면 카메라로 책상 위를 비추세요<br>미니어처 도시가 그 위에 생성됩니다</div>
-    <button id="btn-start" onclick="startAR()">📷 AR 시작</button>
-    <div class="s-note">카메라 권한을 허용해 주세요</div>
+    <div class="s-sub">인쇄물이나 책상 위의 공간을 스캔하세요.<br>그 위에 가상 도시의 홀로그램을 투사합니다.</div>
+    <button class="btn-premium" id="btn-start" onclick="startAR()">📷 AR 카메라 연결 시작</button>
   </div>
 
   <script>
-  /* ════════════════════════════════════════════
-     건물 데이터
-  ════════════════════════════════════════════ */
-  const GRID = 4, CELL = 74, OFFSET = (GRID - 1) * CELL * 0.5;
+    /* ════════════════════════════════════════════
+       3D 도시 레이아웃 & 아키타입 데이터 세팅
+    ════════════════════════════════════════════ */
+    const GRID_SIZE = 5;
+    const CELL_SIZE = 56;
+    const OFFSET_VAL = (GRID_SIZE - 1) * CELL_SIZE * 0.5;
 
-  const TYPES = [
-    { h: 38, ww: 34, body: '#e8e4d6', glass: '#1e9be0', roof: '#d4cfc0' },
-    { h: 62, ww: 30, body: '#d6d0c0', glass: '#0880d0', roof: '#c8c0b0' },
-    { h: 95, ww: 26, body: '#c4bca8', glass: '#0660c0', roof: '#b8b0a0' },
-    { h: 46, ww: 32, body: '#dcd8c8', glass: '#28b0f0', roof: '#d0cac0' },
-  ];
-  const LAYOUT = [0,1,2,1, 2,0,3,2, 1,3,0,1, 0,2,1,0];
+    // 아키타입별 고유 특성 정의
+    const ARCHETYPES = {
+      chaos: {
+        name: "Chaos Neon District",
+        bodyClass: "theme-chaos-neon",
+        heights: [35, 55, 80, 110, 45],
+        widths: [24, 28, 22, 26, 30],
+        density: 0.90,
+        desc: "GRID: 5x5 | NEON HIGH",
+        colors: { roof: '#ff007f', ant: '#00ffff' }
+      },
+      harmony: {
+        name: "Minimal Harmony City",
+        bodyClass: "theme-minimal-harmony",
+        heights: [25, 38, 45, 30, 20],
+        widths: [32, 26, 28, 30, 34],
+        density: 0.50,
+        desc: "GRID: 5x5 | ECO CALM",
+        colors: { roof: '#54a065', ant: '#9ca3af' }
+      },
+      flow: {
+        name: "Dynamic Flow City",
+        bodyClass: "theme-dynamic-flow",
+        heights: [40, 65, 95, 120, 50],
+        widths: [26, 24, 28, 22, 30],
+        density: 0.75,
+        desc: "GRID: 5x5 | STEEL DYNAMIC",
+        colors: { roof: '#00d4ff', ant: '#007cff' }
+      },
+      ruins: {
+        name: "Silent Ruins City",
+        bodyClass: "theme-silent-ruins",
+        heights: [15, 25, 35, 20, 12],
+        widths: [34, 30, 32, 28, 36],
+        density: 0.30,
+        desc: "GRID: 5x5 | RUINS SILENT",
+        colors: { roof: '#4a473d', ant: '#6b7280' }
+      }
+    };
 
-  const grid = document.getElementById('city-grid');
-  const buildings = [];
+    let activeArch = 'chaos';
+    const spawnedBuildings = [];
+    const root = document.getElementById('buildings-root');
 
-  for (let r = 0; r < GRID; r++) {
-    for (let c = 0; c < GRID; c++) {
-      const t = TYPES[LAYOUT[r * GRID + c]];
-      const px = c * CELL - OFFSET;
-      const pz = r * CELL - OFFSET;
-
-      const wrap = document.createElement('div');
-      wrap.className = 'building-wrap';
-      wrap.style.cssText = `
-        left: calc(50% + ${px}px);
-        top:  calc(50% + ${pz}px);
-        width: ${t.ww}px;
-        transform: translate(-50%, -50%) translateZ(0px);
-      `;
-
-      const b = document.createElement('div');
-      b.className = 'building';
-      b.style.cssText = `
-        width: ${t.ww}px;
-        height: ${t.h}px;
-        bottom: 0; left: 0;
-        transform: scaleY(0.001);
-      `;
-
-      // 앞면
-      const front = document.createElement('div');
-      front.className = 'b-face';
-      front.style.cssText = `
-        width:${t.ww}px; height:${t.h}px;
-        background: linear-gradient(180deg, ${t.glass} 0%, ${t.glass} 35%, ${t.body} 35%, ${t.body} 100%);
-        left:0; top:0;
-      `;
-
-      // 측면 (그림자 효과)
-      const side = document.createElement('div');
-      side.className = 'b-face';
-      side.style.cssText = `
-        width: 12px; height: ${t.h}px;
-        background: linear-gradient(180deg, ${shadeColor(t.glass,-25)} 0%, ${shadeColor(t.glass,-25)} 35%, ${shadeColor(t.body,-20)} 35%, ${shadeColor(t.body,-20)} 100%);
-        left: ${t.ww}px; top: 0;
-        transform: rotateY(90deg);
-        transform-origin: left center;
-      `;
-
-      // 지붕
-      const roof = document.createElement('div');
-      roof.className = 'b-face';
-      roof.style.cssText = `
-        width: ${t.ww}px; height: 12px;
-        background: ${t.roof};
-        left: 0; top: -12px;
-      `;
-
-      // 안테나
-      const ant = document.createElement('div');
-      ant.className = 'b-face';
-      ant.style.cssText = `
-        width: 2px; height: 14px;
-        background: #aaaaaa;
-        left: ${t.ww/2 - 1}px; top: -26px;
-      `;
-
-      b.append(front, side, roof, ant);
-      wrap.appendChild(b);
-      grid.appendChild(wrap);
-      buildings.push(b);
+    // 색상 음영 보정 헬퍼
+    function shadeColor(hex, pct) {
+      if (!hex || hex[0] !== '#') return hex;
+      const n = parseInt(hex.slice(1), 16);
+      const r = Math.max(0, Math.min(255, (n>>16) + pct));
+      const g = Math.max(0, Math.min(255, ((n>>8)&0xff) + pct));
+      const b = Math.max(0, Math.min(255, (n&0xff) + pct));
+      return '#' + [r,g,b].map(x=>x.toString(16).padStart(2,'0')).join('');
     }
-  }
 
-  function shadeColor(hex, pct) {
-    const n = parseInt(hex.slice(1), 16);
-    const r = Math.max(0, Math.min(255, (n>>16) + pct));
-    const g = Math.max(0, Math.min(255, ((n>>8)&0xff) + pct));
-    const b2 = Math.max(0, Math.min(255, (n&0xff) + pct));
-    return '#' + [r,g,b2].map(x=>x.toString(16).padStart(2,'0')).join('');
-  }
-
-  /* ════════════════════════════════════════════
-     AR 상태
-  ════════════════════════════════════════════ */
-  let printing = false;
-  let progress = 0;
-  let animId   = null;
-  let stream   = null;
-
-  /* ════════════════════════════════════════════
-     카메라 시작
-  ════════════════════════════════════════════ */
-  async function startAR() {
-    const btn = document.getElementById('btn-start');
-    btn.textContent = '카메라 연결 중...';
-    btn.disabled = true;
-
-    try {
-      // 후면 카메라 우선 요청
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: 'environment' },
-          width:  { ideal: 1920 },
-          height: { ideal: 1080 }
-        },
-        audio: false
+    // 아키타입 변경
+    function switchArchetype(key) {
+      if (activeArch === key && spawnedBuildings.length > 0) return;
+      activeArch = key;
+      
+      // 탭 액티브 표시 변경
+      document.querySelectorAll('.arch-btn').forEach(btn => {
+        btn.classList.remove('active', 'chaos', 'harmony', 'flow', 'ruins');
       });
+      const targetBtn = document.querySelector(`.arch-btn[onclick="switchArchetype('${key}')"]`);
+      targetBtn.classList.add('active', key);
 
-      const video = document.getElementById('cam-video');
-      video.srcObject = stream;
+      // 테마 클래스 교체
+      const stage = document.getElementById('city-stage');
+      stage.className = 'show'; // Reset classes
+      stage.classList.add(ARCHETYPES[key].bodyClass);
 
-      // 후면 카메라면 미러 해제
-      const track = stream.getVideoTracks()[0];
-      const settings = track.getSettings();
-      if (settings.facingMode === 'environment') {
-        video.classList.add('rear');
+      // HUD 타이틀 변경
+      document.getElementById('hud-archetype-name').textContent = ARCHETYPES[key].name;
+      document.getElementById('hud-city-stats').textContent = ARCHETYPES[key].desc;
+      
+      // 슬라이더 반영
+      const targetDensity = Math.round(ARCHETYPES[key].density * 100);
+      document.getElementById('slider-clutter').value = targetDensity;
+      document.getElementById('clutter-val').textContent = targetDensity + '%';
+
+      // 3D 프린팅 트리거 빌드업
+      start3DPrinting();
+    }
+
+    // 도시 빌딩 요소 동적 생성 (CSS 3D 5면체 구성)
+    function rebuildCity(densityOverride = null) {
+      root.innerHTML = '';
+      spawnedBuildings.length = 0;
+
+      const arch = ARCHETYPES[activeArch];
+      const density = densityOverride !== null ? densityOverride : arch.density;
+      
+      // Seed 기반 랜덤 유사성 부여
+      let seed = 42;
+      function randomSeed() {
+        let x = Math.sin(seed++) * 10000;
+        return x - Math.floor(x);
       }
 
-      await video.play();
+      for (let r = 0; r < GRID_SIZE; r++) {
+        for (let c = 0; c < GRID_SIZE; c++) {
+          
+          if (randomSeed() > density) continue;
 
-      // UI 전환
-      video.style.display = 'block';
-      document.getElementById('city-stage').classList.add('show');
-      document.getElementById('ar-ui').classList.add('on');
-      document.getElementById('splash').classList.add('gone');
-      document.getElementById('crosshair').classList.add('show', 'pulse');
+          // 빌딩 사이즈 할당
+          const hIdx = Math.floor(randomSeed() * arch.heights.length);
+          const wIdx = Math.floor(randomSeed() * arch.widths.length);
+          
+          let h = arch.heights[hIdx];
+          let ww = arch.widths[wIdx];
+          let d = ww; // Depth = Width (정사각 기둥 구조)
 
-      setStatus('📡 책상 위를 향하고 화면을 탭하세요');
+          // Ruins 아키타입일 시 무작위로 일부 파손/낮춤 처리
+          if (activeArch === 'ruins' && randomSeed() > 0.6) {
+            h = Math.round(h * 0.4);
+          }
 
-      // 탭/클릭으로 건물 생성
-      document.getElementById('city-stage').addEventListener('click', startPrinting, { once: true });
-      document.getElementById('ar-ui').addEventListener('click', startPrinting, { once: true });
+          const px = c * CELL_SIZE - OFFSET_VAL;
+          const pz = r * CELL_SIZE - OFFSET_VAL;
 
-    } catch (err) {
-      btn.textContent = '📷 AR 시작';
-      btn.disabled = false;
+          // 1. 빌딩 래퍼 구성
+          const wrap = document.createElement('div');
+          wrap.className = 'building-wrap';
+          wrap.style.cssText = `
+            left: calc(50% + ${px}px);
+            top:  calc(50% + ${pz}px);
+            width: ${ww}px; height: ${d}px;
+            transform: translate(-50%, -50%) translateZ(0px);
+          `;
 
-      if (err.name === 'NotAllowedError') {
-        alert('카메라 권한이 거부되었습니다.\n브라우저 설정에서 카메라를 허용해주세요.');
-      } else if (err.name === 'NotFoundError') {
-        alert('카메라를 찾을 수 없습니다.');
-      } else {
-        alert('카메라 오류: ' + err.message);
+          // 2. 빌딩 본체
+          const b = document.createElement('div');
+          b.className = 'building';
+          b.dataset.origH = h;
+          b.dataset.origW = ww;
+          b.dataset.origD = d;
+          b.style.cssText = `
+            width: ${ww}px; height: ${h}px;
+            bottom: 0; left: 0;
+            transform: scaleY(0.001);
+          `;
+
+          // 3. 앞면 (Front Face)
+          const front = document.createElement('div');
+          front.className = 'b-face front';
+          front.style.cssText = `
+            width: ${ww}px; height: ${h}px;
+            transform: translateZ(${d/2}px);
+          `;
+          const winFront = document.createElement('div');
+          winFront.className = 'window-layer';
+          front.appendChild(winFront);
+
+          // 4. 뒷면 (Back Face)
+          const back = document.createElement('div');
+          back.className = 'b-face back';
+          back.style.cssText = `
+            width: ${ww}px; height: ${h}px;
+            transform: rotateY(180deg) translateZ(${d/2}px);
+          `;
+          const winBack = document.createElement('div');
+          winBack.className = 'window-layer';
+          back.appendChild(winBack);
+
+          // 5. 좌측면 (Left Face)
+          const left = document.createElement('div');
+          left.className = 'b-face left';
+          left.style.cssText = `
+            width: ${d}px; height: ${h}px;
+            transform: rotateY(-90deg) translateZ(${ww/2}px);
+          `;
+          const winLeft = document.createElement('div');
+          winLeft.className = 'window-layer';
+          left.appendChild(winLeft);
+
+          // 6. 우측면 (Right Face)
+          const right = document.createElement('div');
+          right.className = 'b-face right';
+          right.style.cssText = `
+            width: ${d}px; height: ${h}px;
+            transform: rotateY(90deg) translateZ(${ww/2}px);
+          `;
+          const winRight = document.createElement('div');
+          winRight.className = 'window-layer';
+          right.appendChild(winRight);
+
+          // 7. 지붕 (Top Face)
+          const top = document.createElement('div');
+          top.className = 'b-face top';
+          top.style.cssText = `
+            width: ${ww}px; height: ${d}px;
+            top: -${d/2}px;
+            transform: rotateX(90deg);
+          `;
+
+          // 8. 안테나 (Antenna)
+          if (h > 50 && randomSeed() > 0.4) {
+            const ant = document.createElement('div');
+            ant.className = 'b-face antenna';
+            const antH = Math.round(10 + randomSeed() * 15);
+            ant.style.cssText = `
+              width: 2px; height: ${antH}px;
+              left: calc(50% - 1px);
+              top: -${antH}px;
+              transform: translateZ(0px);
+            `;
+            b.appendChild(ant);
+          }
+
+          b.append(front, back, left, right, top);
+          wrap.appendChild(b);
+          root.appendChild(wrap);
+          spawnedBuildings.push(b);
+        }
       }
     }
-  }
 
-  /* ════════════════════════════════════════════
-     건물 생성 시작
-  ════════════════════════════════════════════ */
-  function startPrinting() {
-    if (printing) return;
-    printing = true;
+    // ════════════════════════════════════════════
+    // 인터랙션 (Pan, Orbit, Zoom) 제어 상태
+    // ════════════════════════════════════════════
+    let panX = 0, panY = 0;
+    let pitch = 55, yaw = -15;
+    let zoomScale = 0.9;
 
-    document.getElementById('crosshair').classList.remove('pulse');
-    document.getElementById('crosshair').classList.remove('show');
-    setStatus('🏗️ 도시를 3D 프린팅 중...');
+    let isPointerDown = false;
+    let dragMode = 'orbit'; // 'orbit' = 카메라 회전, 'pan' = 도시 이동
+    let startPX = 0, startPY = 0;
 
-    function tick() {
-      progress = Math.min(1, progress + 0.007);
-      setProgress(progress);
-      setBuildings(progress);
+    // 패럴랙스 변수 (Desktop 마우스 움직임 반응)
+    let parallaxX = 0, parallaxY = 0;
+    let targetParallaxX = 0, targetParallaxY = 0;
 
-      if (progress < 1) {
-        animId = requestAnimationFrame(tick);
-      } else {
-        setStatus('🏙️ 도시 완성! 화면을 기울여 감상하세요');
-        // 기울기 감지로 시점 변화
-        startDeviceMotion();
-      }
+    const cityStage = document.getElementById('city-stage');
+    const cityGrid = document.getElementById('city-grid');
+
+    // 디오라마 위치 업데이트
+    function updateStageTransform() {
+      cityStage.style.left = `calc(50% + ${panX}px)`;
+      cityStage.style.bottom = `calc(240px - ${panY}px)`;
     }
-    animId = requestAnimationFrame(tick);
-  }
 
-  /* ════════════════════════════════════════════
-     건물 높이 업데이트
-  ════════════════════════════════════════════ */
-  function setBuildings(p) {
-    const s = Math.max(0.001, p);
-    buildings.forEach(b => {
-      b.style.transform = `scaleY(${s})`;
+    // 디오라마 회전 업데이트 (패럴랙스 포함)
+    function updateGridTransform() {
+      // 마우스 패럴랙스는 뷰 시점(rotate)에 가산하여 몰입형 3D 연출 구현
+      const finalPitch = pitch + (parallaxY * 12);
+      const finalYaw = yaw + (parallaxX * 12);
+      cityGrid.style.transform = `rotateX(${finalPitch}deg) rotateZ(${finalYaw}deg) scale3d(${zoomScale}, ${zoomScale}, ${zoomScale})`;
+    }
+
+    // ════════════════════════════════════════════
+    // 마우스 및 터치 제스처 바인딩
+    // ════════════════════════════════════════════
+    
+    // 포인터 이벤트 통합 (Touch & Mouse)
+    window.addEventListener('pointerdown', (e) => {
+      // UI 요소 조작 시 드래그 동작 무시
+      if (e.target.closest('#dashboard') || e.target.closest('#splash') || e.target.closest('#status')) return;
+      
+      isPointerDown = true;
+      startPX = e.clientX;
+      startPY = e.clientY;
+
+      // 도시 무대를 직접 클릭한 경우 이동 모드(Pan)로 변경, 빈 바닥은 시점 회전(Orbit)
+      if (e.target.closest('#city-stage')) {
+        dragMode = 'pan';
+        document.body.style.cursor = 'move';
+      } else {
+        dragMode = 'orbit';
+        document.body.style.cursor = 'grabbing';
+      }
     });
-  }
 
-  /* ════════════════════════════════════════════
-     진행률 UI
-  ════════════════════════════════════════════ */
-  function setProgress(v) {
-    const pct = Math.round(v * 100);
-    document.getElementById('prog-fill').style.width = pct + '%';
-    document.getElementById('prog-pct').textContent = pct + '%';
-  }
+    window.addEventListener('pointermove', (e) => {
+      // 마우스 패럴랙스 타겟값 갱신 (드래그하지 않을 때 작동)
+      if (!isPointerDown) {
+        targetParallaxX = (e.clientX / window.innerWidth) * 2 - 1;
+        targetParallaxY = (e.clientY / window.innerHeight) * 2 - 1;
+        return;
+      }
 
-  function setStatus(msg) {
-    document.getElementById('status').textContent = msg;
-  }
+      const dx = e.clientX - startPX;
+      const dy = e.clientY - startPY;
+      startPX = e.clientX;
+      startPY = e.clientY;
 
-  /* ════════════════════════════════════════════
-     기기 기울기로 도시 시점 변환
-  ════════════════════════════════════════════ */
-  function startDeviceMotion() {
-    if (!window.DeviceOrientationEvent) return;
+      if (dragMode === 'pan') {
+        panX += dx;
+        panY += dy;
+        updateStageTransform();
+      } else if (dragMode === 'orbit') {
+        yaw += dx * 0.4;
+        pitch = Math.max(15, Math.min(85, pitch - dy * 0.4)); // 고각 한계 클램프
+        updateGridTransform();
+      }
+    });
 
-    window.addEventListener('deviceorientation', (e) => {
-      if (!e.beta && !e.gamma) return;
-      const rx = Math.max(-20, Math.min(20, (e.beta  - 45) * 0.5));
-      const rz = Math.max(-20, Math.min(20, e.gamma * 0.3));
-      document.getElementById('city-grid').style.transform =
-        `rotateX(${55 + rx}deg) rotateZ(${-15 + rz}deg)`;
+    window.addEventListener('pointerup', () => {
+      isPointerDown = false;
+      document.body.style.cursor = 'default';
+    });
+
+    // 마우스 휠 줌 기능
+    window.addEventListener('wheel', (e) => {
+      if (!cityStage.classList.contains('show')) return;
+      zoomScale = Math.max(0.4, Math.min(2.0, zoomScale - e.deltaY * 0.001));
+      updateGridTransform();
     }, { passive: true });
 
-    // iOS 13+: 권한 요청 필요
-    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-      DeviceOrientationEvent.requestPermission().catch(() => {});
+    // 모바일 터치 핀치 줌 제어 (2점 터치)
+    let initialTouchDist = 0;
+    window.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 2 && cityStage.classList.contains('show')) {
+        let dist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        if (initialTouchDist === 0) {
+          initialTouchDist = dist;
+        } else {
+          let factor = dist / initialTouchDist;
+          zoomScale = Math.max(0.4, Math.min(2.0, zoomScale * (1 + (factor - 1) * 0.2)));
+          initialTouchDist = dist;
+          updateGridTransform();
+        }
+      }
+    }, { passive: true });
+
+    window.addEventListener('touchend', (e) => {
+      if (e.touches.length < 2) initialTouchDist = 0;
+    });
+
+    // ════════════════════════════════════════════
+    // 자이로센서 시점 연동 (Mobile AR 모션)
+    // ════════════════════════════════════════════
+    let gyroActive = false;
+    let initialBeta = null;
+    let initialGamma = null;
+
+    function startGyroscope() {
+      if (!window.DeviceOrientationEvent) return;
+
+      const handleOrientation = (e) => {
+        if (!gyroActive || isPointerDown) return;
+        if (!e.beta && !e.gamma) return;
+
+        // 기준각 할당
+        if (initialBeta === null) {
+          initialBeta = e.beta;
+          initialGamma = e.gamma;
+          return;
+        }
+
+        // 상대적인 기울기로 패럴랙스 타겟 오프셋 매핑
+        let deltaBeta = e.beta - initialBeta;
+        let deltaGamma = e.gamma - initialGamma;
+
+        targetParallaxX = Math.max(-1, Math.min(1, deltaGamma * 0.05));
+        targetParallaxY = Math.max(-1, Math.min(1, deltaBeta * 0.05));
+      };
+
+      // iOS 13+ 권한 확인 대응
+      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission()
+          .then(permissionState => {
+            if (permissionState === 'granted') {
+              gyroActive = true;
+              window.addEventListener('deviceorientation', handleOrientation, { passive: true });
+            }
+          })
+          .catch(console.error);
+      } else {
+        gyroActive = true;
+        window.addEventListener('deviceorientation', handleOrientation, { passive: true });
+      }
     }
-  }
 
-  /* ════════════════════════════════════════════
-     AR 종료
-  ════════════════════════════════════════════ */
-  function stopAR() {
-    if (animId) cancelAnimationFrame(animId);
-    if (stream) stream.getTracks().forEach(t => t.stop());
+    // 60FPS 보간 렌더 루프 (패럴랙스 감도 증대)
+    function renderLoop() {
+      // 부드러운 Lerp 적용
+      parallaxX += (targetParallaxX - parallaxX) * 0.08;
+      parallaxY += (targetParallaxY - parallaxY) * 0.08;
+      
+      if (cityStage.classList.contains('show')) {
+        updateGridTransform();
+      }
+      requestAnimationFrame(renderLoop);
+    }
+    requestAnimationFrame(renderLoop);
 
-    printing = false;
-    progress = 0;
-    stream   = null;
-    animId   = null;
 
-    setBuildings(0);
-    setProgress(0);
+    /* ════════════════════════════════════════════
+       핵심 애니메이션 & 시각 효과 로직
+    ════════════════════════════════════════════ */
+    let printAnimId = null;
+    let isPrinting = false;
 
-    document.getElementById('cam-video').style.display = 'none';
-    document.getElementById('cam-video').srcObject = null;
-    document.getElementById('city-stage').classList.remove('show');
-    document.getElementById('ar-ui').classList.remove('on');
-    document.getElementById('splash').classList.remove('gone');
-    document.getElementById('btn-start').textContent = '📷 AR 시작';
-    document.getElementById('btn-start').disabled = false;
-  }
+    // 3D 프린팅 홀로그램 애니메이션 시작
+    function start3DPrinting() {
+      if (isPrinting) {
+        cancelAnimationFrame(printAnimId);
+      }
+      isPrinting = true;
+      
+      const printBar = document.getElementById('print-bar');
+      const printFill = document.getElementById('print-fill');
+      printBar.style.display = 'block';
+      printFill.style.width = '0%';
+
+      rebuildCity();
+
+      // 모든 건물을 프린팅 시작 모드로 셋팅
+      spawnedBuildings.forEach(b => {
+        b.classList.add('printing');
+        b.style.transform = 'scaleY(0.001)';
+      });
+
+      let progress = 0;
+      const speed = 0.015; // 약 1.5초 소요
+
+      function step() {
+        progress = Math.min(1.0, progress + speed);
+        
+        // 진행률 UI 업데이트
+        printFill.style.width = (progress * 100) + '%';
+        
+        // 빌딩 높이 스케일링
+        spawnedBuildings.forEach(b => {
+          b.style.transform = `scaleY(${progress})`;
+        });
+
+        if (progress < 1.0) {
+          printAnimId = requestAnimationFrame(step);
+        } else {
+          isPrinting = false;
+          printBar.style.display = 'none';
+          setStatus('🏙️ 디오라마 생성 완료! 드래그하여 배치하세요');
+          
+          // 프린팅 모드 해제
+          spawnedBuildings.forEach(b => {
+            b.classList.remove('printing');
+          });
+
+          // 모바일 자이로 센서 시작
+          startGyroscope();
+        }
+      }
+      printAnimId = requestAnimationFrame(step);
+    }
+
+    // ════════════════════════════════════════════
+    // 대시보드 컨트롤 패널 바인딩 이벤트
+    // ════════════════════════════════════════════
+
+    // 1. 어수선함(밀도) 슬라이더 조작
+    function onClutterSlider(val) {
+      document.getElementById('clutter-val').textContent = val + '%';
+      
+      // 스캔 상태 아닐 때 실시간 재생성
+      if (!isPrinting) {
+        rebuildCity(val / 100);
+        
+        // 스케일을 즉시 1로 고정
+        spawnedBuildings.forEach(b => {
+          b.style.transform = 'scaleY(1)';
+        });
+      }
+    }
+
+    // 2. 활동량(Wobble) 슬라이더 조작 (출렁거림 연출)
+    let wobbleTime = 0;
+    let wobbleAnimId = null;
+    let targetWobbleAmount = 0;
+    let currentWobbleAmount = 0;
+
+    function onActivitySlider(val) {
+      document.getElementById('activity-val').textContent = val + '%';
+      targetWobbleAmount = val / 100;
+      
+      if (wobbleAnimId === null) {
+        animateWobble();
+      }
+    }
+
+    // Wobble 삼각함수 가상 시뮬레이션
+    function animateWobble() {
+      // Lerp로 워블 강도 보정
+      currentWobbleAmount += (targetWobbleAmount - currentWobbleAmount) * 0.1;
+      
+      if (currentWobbleAmount < 0.005 && targetWobbleAmount === 0) {
+        // 정지
+        spawnedBuildings.forEach(b => {
+          b.style.transform = 'scaleY(1) rotateX(0deg) rotateZ(0deg)';
+        });
+        wobbleAnimId = null;
+        return;
+      }
+
+      wobbleTime += 0.15;
+      
+      // 스프링 물리 모방을 위한 사인 코사인 변조
+      const angleX = Math.sin(wobbleTime) * 15 * currentWobbleAmount;
+      const angleZ = Math.cos(wobbleTime * 0.7) * 12 * currentWobbleAmount;
+      const scaleSquash = 1.0 - (Math.abs(angleX) * 0.01);
+
+      spawnedBuildings.forEach(b => {
+        const origH = b.dataset.origH;
+        // 높이(origH)가 클수록 관성에 의해 더 크게 흔들림
+        const factor = origH / 100;
+        b.style.transform = `scaleY(${scaleSquash}) rotateX(${angleX * factor}deg) rotateZ(${angleZ * factor}deg)`;
+      });
+
+      wobbleAnimId = requestAnimationFrame(animateWobble);
+    }
+
+    // 3. 야간 조명 토글
+    function toggleNightMode() {
+      const btn = document.getElementById('btn-night');
+      const body = document.body;
+      body.classList.toggle('night-mode');
+      
+      if (body.classList.contains('night-mode')) {
+        btn.classList.add('active');
+        btn.textContent = '🌙 야간 조명: ON';
+      } else {
+        btn.classList.remove('active');
+        btn.textContent = '☀️ 주간 조명: ON';
+      }
+    }
+
+    // 4. 날씨 비 토글
+    let rainInterval = null;
+    function toggleRainMode() {
+      const btn = document.getElementById('btn-rain');
+      btn.classList.toggle('active');
+      
+      const rainContainer = document.getElementById('rain-container');
+      rainContainer.innerHTML = '';
+      
+      if (btn.classList.contains('active')) {
+        btn.textContent = '🌧️ 날씨: 비 (ON)';
+        
+        // CSS 빗방울 동적 스폰 시작
+        const spawnRain = () => {
+          if (rainContainer.children.length > 80) return;
+          const drop = document.createElement('div');
+          drop.className = 'rain-drop';
+          drop.style.left = Math.random() * window.innerWidth + 'px';
+          drop.style.animationDuration = (0.5 + Math.random() * 0.4) + 's';
+          drop.style.opacity = 0.2 + Math.random() * 0.5;
+          rainContainer.appendChild(drop);
+          
+          // 화면 아래로 가면 제거
+          setTimeout(() => {
+            if (drop.parentNode === rainContainer) {
+              rainContainer.removeChild(drop);
+            }
+          }, 900);
+        };
+
+        rainInterval = setInterval(spawnRain, 30);
+      } else {
+        btn.textContent = '☀️ 날씨: 맑음';
+        if (rainInterval) {
+          clearInterval(rainInterval);
+          rainInterval = null;
+        }
+      }
+    }
+
+
+    /* ════════════════════════════════════════════
+       AR 카메라 라이프사이클 관리
+    ════════════════════════════════════════════ */
+    let cameraStream = null;
+
+    async function startAR() {
+      const startBtn = document.getElementById('btn-start');
+      startBtn.textContent = '카메라 연결 검증 중...';
+      startBtn.disabled = true;
+
+      try {
+        // 모바일/환경용 후면 카메라 ideal 배치 호출
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          },
+          audio: false
+        });
+
+        const video = document.getElementById('cam-video');
+        video.srcObject = cameraStream;
+
+        // 카메라 타입에 따른 플립 수정
+        const track = cameraStream.getVideoTracks()[0];
+        const settings = track.getSettings();
+        if (settings.facingMode === 'environment') {
+          video.classList.add('rear');
+        }
+
+        await video.play();
+        video.style.display = 'block';
+
+        // 씬 구성 및 HUD 활성화
+        document.getElementById('splash').classList.add('gone');
+        document.getElementById('scanning-overlay').style.display = 'block';
+        document.getElementById('ar-ui').classList.add('on');
+        document.getElementById('crosshair').classList.add('show', 'pulse');
+        
+        setStatus('📡 책상 바닥을 향하고 화면을 탭하여 고정하세요');
+
+        // 첫 탭/클릭으로 도시 투사 시작 바인딩
+        const triggerAnchor = (e) => {
+          // UI 버튼을 클릭한 경우 버블링 방지
+          if (e.target.closest('#btn-exit') || e.target.closest('#dashboard')) return;
+
+          document.getElementById('scanning-overlay').style.display = 'none';
+          document.getElementById('crosshair').classList.remove('pulse', 'show');
+          cityStage.classList.add('show');
+          
+          // 도시 초기화 배치
+          panX = 0; panY = 0;
+          updateStageTransform();
+          
+          switchArchetype('chaos'); // 기본 카오스 네온부터 시작
+          
+          // 이벤트 제거
+          window.removeEventListener('click', triggerAnchor);
+          window.removeEventListener('touchstart', triggerAnchor);
+        };
+
+        window.addEventListener('click', triggerAnchor);
+        window.addEventListener('touchstart', triggerAnchor);
+
+      } catch (err) {
+        startBtn.textContent = '📷 AR 카메라 연결 시작';
+        startBtn.disabled = false;
+        
+        // 기기에 후면 카메라 등이 없을 때 시뮬레이션 모드로 진입 제안
+        const goSim = confirm('후면 카메라를 획득하지 못했습니다.\n카메라 없이 3D 홀로그램 가상 시뮬레이션 모드로 시작할까요?');
+        if (goSim) {
+          document.getElementById('splash').classList.add('gone');
+          document.getElementById('ar-ui').classList.add('on');
+          cityStage.classList.add('show');
+          panX = 0; panY = 0;
+          updateStageTransform();
+          switchArchetype('chaos');
+        }
+      }
+    }
+
+    function stopAR() {
+      // 애니메이션 클리어
+      if (printAnimId) cancelAnimationFrame(printAnimId);
+      if (wobbleAnimId) cancelAnimationFrame(wobbleAnimId);
+      if (rainInterval) clearInterval(rainInterval);
+      
+      // 카메라 스트림 정리
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        cameraStream = null;
+      }
+
+      isPrinting = false;
+      wobbleAnimId = null;
+
+      // UI 초기화
+      document.body.classList.remove('night-mode');
+      document.getElementById('btn-night').classList.add('active');
+      document.getElementById('btn-night').textContent = '🌙 야간 조명: ON';
+      document.getElementById('btn-rain').classList.remove('active');
+      document.getElementById('btn-rain').textContent = '☀️ 날씨: 맑음';
+
+      const video = document.getElementById('cam-video');
+      video.style.display = 'none';
+      video.srcObject = null;
+
+      cityStage.classList.remove('show');
+      document.getElementById('ar-ui').classList.remove('on');
+      document.getElementById('splash').classList.remove('gone');
+
+      const startBtn = document.getElementById('btn-start');
+      startBtn.textContent = '📷 AR 카메라 연결 시작';
+      startBtn.disabled = false;
+    }
   </script>
 </body>
 </html>
