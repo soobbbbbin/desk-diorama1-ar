@@ -672,7 +672,10 @@
     </div>
 
     <!-- 유리 조작 대시보드 (자동 분석화 및 물리 터치 피드백에 맞게 경량화) -->
-    <div id="dashboard">
+    <div id="dashboard" style="position: relative;">
+      <!-- ⚙️ 개발자 테스트 모드 토글 버튼 -->
+      <button id="btn-dev-toggle" onclick="toggleDevPanel()" style="position: absolute; top: 18px; right: 18px; background: none; border: none; font-size: 16px; color: rgba(255,255,255,0.3); cursor: pointer; outline: none; transition: color 0.3s;" title="테스트 제어판 열기">⚙️</button>
+
       <div class="hud-title-container">
         <div class="hud-archetype" id="hud-archetype-name">환경 분석 대기 중...</div>
         <div class="hud-stats" id="hud-city-stats">GRID: 5x5 | STANDBY</div>
@@ -681,6 +684,36 @@
       <!-- 빌드 프로세스 진행바 -->
       <div class="print-prog-bar" id="print-bar">
         <div class="print-prog-fill" id="print-fill"></div>
+      </div>
+
+      <!-- 🛠️ 숨겨진 개발자 테스트 패널 (디폴트 숨김, 기획 수동 검증용) -->
+      <div id="dev-panel" style="display: none; border-top: 1px solid rgba(255,255,255,0.08); margin-top: 14px; padding-top: 14px; animation: fadeIn 0.3s ease;">
+        <div style="font-size: 11px; font-weight: bold; color: #00d4ff; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+          <span>🛠️ 개발자 테스트 제어판</span>
+          <span style="font-size: 9px; color: #6b7280; font-weight: normal;">수동 강제 조작 활성화</span>
+        </div>
+        
+        <!-- 아키타입 수동 강제 스위칭 -->
+        <div class="archetype-selector" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 12px;">
+          <button class="arch-btn active chaos" id="dev-arch-chaos" onclick="switchArchetype('chaos')">Chaos</button>
+          <button class="arch-btn harmony" id="dev-arch-harmony" onclick="switchArchetype('harmony')">Minimal</button>
+          <button class="arch-btn flow" id="dev-arch-flow" onclick="switchArchetype('flow')">Dynamic</button>
+          <button class="arch-btn ruins" id="dev-arch-ruins" onclick="switchArchetype('ruins')">Ruins</button>
+        </div>
+
+        <!-- 날씨 수동 토글 -->
+        <div class="controls-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+          <div class="toggle-row" style="display: flex; gap: 10px; grid-column: span 2;">
+            <button class="toggle-btn active" id="btn-night" onclick="toggleNightMode()">🌙 야간 조명</button>
+            <button class="toggle-btn" id="btn-rain" onclick="toggleRainMode()">🌧️ 날씨: 비</button>
+          </div>
+        </div>
+
+        <!-- 어수선함(밀도) 강제 수동 조작 -->
+        <div class="slider-group" style="display: flex; flex-direction: column; gap: 4px; margin-bottom: 4px;">
+          <div class="slider-title" style="font-size: 11px; color: #9ca3af; display: flex; justify-content: space-between;">어수선함 (Density) <span id="clutter-val" style="color: #f3f4f6; font-weight: 600;">70%</span></div>
+          <input type="range" id="slider-clutter" min="10" max="100" value="70" oninput="onClutterSlider(this.value)" style="width: 100%;">
+        </div>
       </div>
 
       <div id="interaction-tip">
@@ -809,8 +842,55 @@
       const hudStats = document.getElementById('hud-city-stats');
       if (hudStats) hudStats.textContent = ARCHETYPES[key].desc;
 
+      // 🛠️ 개발자 패널이 존재할 시 수동 탭 액티브 상태 업데이트
+      const devPanel = document.getElementById('dev-panel');
+      if (devPanel) {
+        document.querySelectorAll('#dev-panel .arch-btn').forEach(btn => {
+          btn.classList.remove('active', 'chaos', 'harmony', 'flow', 'ruins');
+        });
+        const targetBtn = document.getElementById(`dev-arch-${key}`);
+        if (targetBtn) {
+          targetBtn.classList.add('active', key);
+        }
+      }
+
       // 3D 프린팅 트리거 빌드업
       start3DPrinting();
+    }
+
+    // 개발자 테스트 패널 토글 함수
+    function toggleDevPanel() {
+      const devPanel = document.getElementById('dev-panel');
+      const toggleBtn = document.getElementById('btn-dev-toggle');
+      if (!devPanel) return;
+      
+      if (devPanel.style.display === 'none') {
+        devPanel.style.display = 'block';
+        if (toggleBtn) {
+          toggleBtn.style.color = '#00d4ff';
+          toggleBtn.textContent = '✖️'; // 닫기 기호로 변경
+        }
+      } else {
+        devPanel.style.display = 'none';
+        if (toggleBtn) {
+          toggleBtn.style.color = 'rgba(255,255,255,0.3)';
+          toggleBtn.textContent = '⚙️';
+        }
+      }
+    }
+
+    // 개발자 모드용 어수선함(밀도) 슬라이더 조작
+    function onClutterSlider(val) {
+      const clutterVal = document.getElementById('clutter-val');
+      if (clutterVal) clutterVal.textContent = val + '%';
+      
+      if (!isPrinting) {
+        rebuildCity(val / 100);
+        // 스케일을 즉시 1로 고정 (세로 방향 유지)
+        spawnedBuildings.forEach(b => {
+          b.style.transform = 'rotateX(-90deg) scaleY(1)';
+        });
+      }
     }
 
     // 카메라 영상 조도/색조 분석을 통해 책상 환경에 어울리는 아키타입 테마 자동 매핑
