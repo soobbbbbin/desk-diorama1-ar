@@ -4,517 +4,546 @@
   <meta charset="utf-8">
   <title>Desk Diorama AR</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-
-  <!-- A-Frame 1.4.2 -->
-  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
 
-    /* ── 기본 상태: 어두운 배경 ── */
     html, body {
       width: 100%; height: 100%;
       overflow: hidden;
-      background: #0a0e1a;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      color: #e0e6f0;
+      background: #080c18;
+      font-family: 'Inter', -apple-system, sans-serif;
+      color: #e0e8f8;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
     }
 
-    /* AR 진입 시 body 클래스로 투명 전환 */
-    body.ar-active {
-      background: transparent !important;
+    /* ══════════════════════════════
+       카메라 비디오 (전체 배경)
+    ══════════════════════════════ */
+    #cam-video {
+      position: fixed;
+      inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      z-index: 1;
+      display: none;
+      transform: scaleX(-1); /* 전면 카메라 미러 보정 */
     }
-    body.ar-active canvas {
-      background: transparent !important;
+    #cam-video.rear { transform: scaleX(1); } /* 후면 카메라 */
+
+    /* ══════════════════════════════
+       3D 건물 캔버스 오버레이
+    ══════════════════════════════ */
+    #ar-canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%; height: 100%;
+      z-index: 2;
+      pointer-events: none;
+      display: none;
     }
 
-    /* A-Frame canvas */
-    a-scene canvas {
-      pointer-events: none !important;
-    }
-
-    /* ═══════════════════════════
-       스플래시 화면 (AR 시작 전)
-    ═══════════════════════════ */
+    /* ══════════════════════════════
+       스플래시 화면
+    ══════════════════════════════ */
     #splash {
       position: fixed;
       inset: 0;
+      z-index: 50;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      z-index: 100;
-      background: linear-gradient(160deg, #0a0e1a 0%, #0d1f3c 50%, #0a0e1a 100%);
-      transition: opacity 0.4s ease;
+      background: radial-gradient(ellipse at 50% 40%, #0d2040 0%, #080c18 70%);
+      transition: opacity 0.5s;
     }
-    #splash.hidden {
-      opacity: 0;
-      pointer-events: none;
+    #splash.gone { opacity: 0; pointer-events: none; }
+
+    .s-icon { font-size: 64px; margin-bottom: 20px; animation: float 3s ease-in-out infinite; }
+    @keyframes float {
+      0%,100% { transform: translateY(0); }
+      50%      { transform: translateY(-10px); }
     }
 
-    .splash-logo {
-      font-size: 48px;
-      margin-bottom: 16px;
-    }
-
-    .splash-title {
-      font-size: 24px;
-      font-weight: 700;
-      color: #00cfff;
-      text-shadow: 0 0 20px rgba(0,207,255,0.6);
+    .s-title {
+      font-size: 26px; font-weight: 700;
+      color: #00d4ff;
+      text-shadow: 0 0 30px rgba(0,212,255,0.7);
       margin-bottom: 8px;
+    }
+    .s-sub {
+      font-size: 13px; color: #5a7090;
+      text-align: center; line-height: 1.6;
+      margin-bottom: 44px;
+      padding: 0 32px;
+    }
+
+    #btn-start {
+      padding: 18px 52px;
+      font-size: 16px; font-weight: 700;
       letter-spacing: 1px;
-    }
-
-    .splash-sub {
-      font-size: 13px;
-      color: #6e8098;
-      margin-bottom: 40px;
-      text-align: center;
-      padding: 0 20px;
-    }
-
-    #start-btn {
-      padding: 18px 48px;
-      font-size: 16px;
-      font-weight: 700;
-      letter-spacing: 1.5px;
-      text-transform: uppercase;
       color: #fff;
-      background: linear-gradient(135deg, #00cfff, #005fff);
-      border: none;
-      border-radius: 50px;
+      background: linear-gradient(135deg, #00d4ff 0%, #0055ff 100%);
+      border: none; border-radius: 60px;
       cursor: pointer;
-      box-shadow: 0 0 30px rgba(0,150,255,0.5), 0 4px 20px rgba(0,0,0,0.4);
-      transition: transform 0.15s, box-shadow 0.15s;
-      -webkit-tap-highlight-color: transparent;
-      pointer-events: auto;
+      box-shadow: 0 0 40px rgba(0,120,255,0.5), 0 6px 24px rgba(0,0,0,0.5);
+      transition: transform .15s, box-shadow .15s;
     }
-    #start-btn:active {
-      transform: scale(0.95);
-      box-shadow: 0 0 15px rgba(0,150,255,0.3);
-    }
+    #btn-start:active { transform: scale(0.94); }
 
-    .hint {
-      margin-top: 24px;
-      font-size: 11px;
-      color: #3d5168;
-      text-align: center;
-    }
+    .s-note { margin-top: 20px; font-size: 11px; color: #2a4060; }
 
-    /* ═══════════════════════════
-       AR HUD (AR 진입 후)
-    ═══════════════════════════ */
-    #hud {
+    /* ══════════════════════════════
+       AR 오버레이 UI
+    ══════════════════════════════ */
+    #ar-ui {
       position: fixed;
       inset: 0;
+      z-index: 10;
       pointer-events: none;
-      z-index: 200;
       display: none;
     }
-    #hud.visible { display: block; }
+    #ar-ui.on { display: block; }
 
-    /* 상단 상태 표시 */
-    #status-bar {
+    /* 상단 상태바 */
+    #status {
       position: absolute;
-      top: 20px;
-      left: 50%;
+      top: 20px; left: 50%;
       transform: translateX(-50%);
-      background: rgba(0,0,0,0.6);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-      border: 1px solid rgba(0,207,255,0.3);
-      border-radius: 24px;
-      padding: 10px 24px;
-      font-size: 13px;
-      font-weight: 600;
-      color: #00cfff;
-      letter-spacing: 0.5px;
+      padding: 10px 22px;
+      background: rgba(0,0,0,0.55);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(0,212,255,0.3);
+      border-radius: 30px;
+      font-size: 13px; font-weight: 600;
+      color: #00d4ff;
       white-space: nowrap;
       pointer-events: none;
     }
 
-    /* 하단 패널 */
-    #bottom-panel {
+    /* 중앙 타겟 조준점 */
+    #crosshair {
       position: absolute;
-      bottom: 28px;
-      left: 50%;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 60px; height: 60px;
+      pointer-events: none;
+      opacity: 0.85;
+      display: none;
+    }
+    #crosshair.show { display: block; }
+    #crosshair svg { width: 100%; height: 100%; }
+
+    /* 탭 유도 애니메이션 */
+    @keyframes tap-pulse {
+      0%   { transform: translate(-50%,-50%) scale(1); opacity: 0.9; }
+      50%  { transform: translate(-50%,-50%) scale(1.15); opacity: 0.5; }
+      100% { transform: translate(-50%,-50%) scale(1); opacity: 0.9; }
+    }
+    #crosshair.pulse { animation: tap-pulse 1.2s ease-in-out infinite; }
+
+    /* 하단 패널 */
+    #bottom {
+      position: absolute;
+      bottom: 32px; left: 50%;
       transform: translateX(-50%);
-      width: 90%;
-      max-width: 380px;
-      background: rgba(0,0,0,0.65);
-      backdrop-filter: blur(14px);
-      -webkit-backdrop-filter: blur(14px);
-      border: 1px solid rgba(0,207,255,0.2);
-      border-radius: 20px;
-      padding: 16px;
+      width: 88%; max-width: 380px;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(0,212,255,0.2);
+      border-radius: 22px;
+      padding: 16px 18px;
       pointer-events: auto;
     }
 
-    .progress-label {
+    .prog-header {
       display: flex;
       justify-content: space-between;
-      font-size: 12px;
-      color: #8ca0b8;
+      font-size: 12px; color: #5a7090;
       margin-bottom: 8px;
     }
-
-    .progress-track {
-      width: 100%;
-      height: 6px;
-      background: #1a2535;
+    .prog-track {
+      width: 100%; height: 5px;
+      background: #111d2e;
+      border-radius: 3px; overflow: hidden;
+      margin-bottom: 14px;
+    }
+    .prog-fill {
+      height: 100%; width: 0%;
+      background: linear-gradient(90deg, #00d4ff, #0055ff);
       border-radius: 3px;
-      overflow: hidden;
-      margin-bottom: 12px;
+      transition: width .1s linear;
     }
 
-    .progress-fill {
-      height: 100%;
-      width: 0%;
-      background: linear-gradient(90deg, #00cfff, #005fff);
-      border-radius: 3px;
-      transition: width 0.1s linear;
-    }
-
-    #exit-btn {
-      display: block;
-      width: 100%;
+    #btn-exit {
+      display: block; width: 100%;
       padding: 11px;
-      background: rgba(255,255,255,0.07);
-      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
       border-radius: 12px;
-      color: #6e8098;
-      font-size: 12px;
+      color: #4a6080; font-size: 12px;
       cursor: pointer;
-      pointer-events: auto;
-      -webkit-tap-highlight-color: transparent;
     }
-    #exit-btn:active { background: rgba(255,255,255,0.15); }
+    #btn-exit:active { background: rgba(255,255,255,0.14); }
+
+    /* 건물 CSS 3D 컨테이너 */
+    #city-stage {
+      position: fixed;
+      bottom: 180px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 340px; height: 340px;
+      z-index: 5;
+      pointer-events: auto;
+      cursor: pointer;
+      display: none;
+      perspective: 800px;
+    }
+    #city-stage.show { display: block; }
+
+    #city-grid {
+      width: 100%; height: 100%;
+      transform-style: preserve-3d;
+      transform: rotateX(55deg) rotateZ(-15deg);
+      position: relative;
+      transition: transform 0.4s ease;
+    }
+
+    .building-wrap {
+      position: absolute;
+      transform-style: preserve-3d;
+    }
+
+    .building {
+      position: absolute;
+      transform-origin: bottom center;
+      transform-style: preserve-3d;
+      transition: transform 0.05s linear;
+    }
+
+    .b-face {
+      position: absolute;
+      backface-visibility: hidden;
+    }
+
+    /* 그림자 */
+    .city-shadow {
+      position: absolute;
+      bottom: -2px; left: 50%;
+      transform: translateX(-50%);
+      width: 290px; height: 290px;
+      background: radial-gradient(ellipse, rgba(0,0,0,0.35) 0%, transparent 70%);
+      border-radius: 50%;
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
 
-  <!-- ════════════════════════════════
-       스플래시 화면
-  ════════════════════════════════ -->
-  <div id="splash">
-    <div class="splash-logo">🏙️</div>
-    <div class="splash-title">Desk Diorama AR</div>
-    <div class="splash-sub">카메라로 책상 위를 비추면<br>미니어처 도시가 생성됩니다</div>
-    <button id="start-btn" onclick="startAR()">📷 AR 카메라 시작</button>
-    <div class="hint">* 카메라 권한 허용 필요 · Chrome/Safari 권장</div>
+  <!-- 카메라 영상 배경 -->
+  <video id="cam-video" autoplay playsinline muted></video>
+
+  <!-- 3D 건물 씬 -->
+  <div id="city-stage">
+    <div class="city-shadow"></div>
+    <div id="city-grid"></div>
   </div>
 
-  <!-- ════════════════════════════════
-       AR HUD
-  ════════════════════════════════ -->
-  <div id="hud">
-    <div id="status-bar">📡 책상 표면을 탐색 중...</div>
-    <div id="bottom-panel">
-      <div class="progress-label">
+  <!-- AR UI 오버레이 -->
+  <div id="ar-ui">
+    <div id="status">📷 카메라 준비 중...</div>
+
+    <!-- 조준점 -->
+    <div id="crosshair">
+      <svg viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="30" cy="30" r="28" stroke="#00d4ff" stroke-width="1.5" stroke-dasharray="4 4"/>
+        <circle cx="30" cy="30" r="4"  fill="#00d4ff"/>
+        <line x1="30" y1="2"  x2="30" y2="16" stroke="#00d4ff" stroke-width="1.5"/>
+        <line x1="30" y1="44" x2="30" y2="58" stroke="#00d4ff" stroke-width="1.5"/>
+        <line x1="2"  y1="30" x2="16" y2="30" stroke="#00d4ff" stroke-width="1.5"/>
+        <line x1="44" y1="30" x2="58" y2="30" stroke="#00d4ff" stroke-width="1.5"/>
+      </svg>
+    </div>
+
+    <div id="bottom">
+      <div class="prog-header">
         <span id="prog-label">건물 생성</span>
         <span id="prog-pct">0%</span>
       </div>
-      <div class="progress-track">
-        <div class="progress-fill" id="prog-fill"></div>
+      <div class="prog-track">
+        <div class="prog-fill" id="prog-fill"></div>
       </div>
-      <button id="exit-btn" onclick="exitAR()">✕ AR 종료</button>
+      <button id="btn-exit" onclick="stopAR()">✕  AR 종료</button>
     </div>
   </div>
 
-  <!-- ════════════════════════════════
-       A-Frame 씬
-       - alpha:true → 투명 캔버스 (카메라 패스스루 필수)
-       - hit-test: optional (필수로 하면 미지원 기기에서 세션 실패)
-  ════════════════════════════════ -->
-  <a-scene
-    id="main-scene"
-    webxr="allowedModes: ar;
-           referenceSpaceType: local-floor;
-           optionalFeatures: hit-test, local-floor, bounded-floor;"
-    renderer="colorManagement: true; antialias: true; alpha: true;"
-    embedded
-    vr-mode-ui="enabled: false"
-    ar-hit-test-manager>
+  <!-- 스플래시 -->
+  <div id="splash">
+    <div class="s-icon">🏙️</div>
+    <div class="s-title">Desk Diorama AR</div>
+    <div class="s-sub">후면 카메라로 책상 위를 비추세요<br>미니어처 도시가 그 위에 생성됩니다</div>
+    <button id="btn-start" onclick="startAR()">📷 AR 시작</button>
+    <div class="s-note">카메라 권한을 허용해 주세요</div>
+  </div>
 
-    <!-- 조명 -->
-    <a-light type="directional" intensity="1.5" position="2 4 2" castShadow="false"></a-light>
-    <a-light type="ambient"     intensity="0.8" color="#cce8ff"></a-light>
-
-    <!-- 디오라마 루트 (히트테스트로 위치 결정) -->
-    <a-entity id="diorama-root" visible="false" position="0 0 -1.5">
-
-      <!-- 바닥판 -->
-      <a-box
-        id="base-plate"
-        position="0 -0.015 0"
-        width="2.2" height="0.03" depth="2.2"
-        color="#f0ece2"
-        roughness="0.85" metalness="0.05">
-      </a-box>
-
-      <!-- 건물 컨테이너 (JS로 채워짐) -->
-      <a-entity id="buildings-container"></a-entity>
-
-    </a-entity>
-
-  </a-scene>
-
-  <!-- ════════════════════════════════
-       커스텀 A-Frame 컴포넌트
-  ════════════════════════════════ -->
   <script>
-    /* ──────────────────────────────────
-       ar-hit-test-manager component
-    ────────────────────────────────── */
-    AFRAME.registerComponent('ar-hit-test-manager', {
-      init: function () {
-        this.hitTestSource   = null;
-        this.viewerSpace     = null;
-        this.printing        = false;
-        this.printProgress   = 0;
-        this.surfaceFound    = false;
+  /* ════════════════════════════════════════════
+     건물 데이터
+  ════════════════════════════════════════════ */
+  const GRID = 4, CELL = 74, OFFSET = (GRID - 1) * CELL * 0.5;
 
-        const scene = this.el;
+  const TYPES = [
+    { h: 38, ww: 34, body: '#e8e4d6', glass: '#1e9be0', roof: '#d4cfc0' },
+    { h: 62, ww: 30, body: '#d6d0c0', glass: '#0880d0', roof: '#c8c0b0' },
+    { h: 95, ww: 26, body: '#c4bca8', glass: '#0660c0', roof: '#b8b0a0' },
+    { h: 46, ww: 32, body: '#dcd8c8', glass: '#28b0f0', roof: '#d0cac0' },
+  ];
+  const LAYOUT = [0,1,2,1, 2,0,3,2, 1,3,0,1, 0,2,1,0];
 
-        scene.addEventListener('enter-vr', () => {
-          if (!scene.is('ar-mode')) return;
+  const grid = document.getElementById('city-grid');
+  const buildings = [];
 
-          // 배경 투명화
-          document.body.classList.add('ar-active');
-          scene.renderer.setClearAlpha(0);
+  for (let r = 0; r < GRID; r++) {
+    for (let c = 0; c < GRID; c++) {
+      const t = TYPES[LAYOUT[r * GRID + c]];
+      const px = c * CELL - OFFSET;
+      const pz = r * CELL - OFFSET;
 
-          // UI 전환
-          document.getElementById('splash').classList.add('hidden');
-          document.getElementById('hud').classList.add('visible');
+      const wrap = document.createElement('div');
+      wrap.className = 'building-wrap';
+      wrap.style.cssText = `
+        left: calc(50% + ${px}px);
+        top:  calc(50% + ${pz}px);
+        width: ${t.ww}px;
+        transform: translate(-50%, -50%) translateZ(0px);
+      `;
 
-          const xrSession = scene.renderer.xr.getSession();
-          if (!xrSession) return;
+      const b = document.createElement('div');
+      b.className = 'building';
+      b.style.cssText = `
+        width: ${t.ww}px;
+        height: ${t.h}px;
+        bottom: 0; left: 0;
+        transform: scaleY(0.001);
+      `;
 
-          // 탭 → 건물 프린팅 시작
-          xrSession.addEventListener('select', () => {
-            if (this.surfaceFound && !this.printing) {
-              this.printing = true;
-              setStatus('🏗️ 도시를 3D 프린팅 중...');
-              document.getElementById('prog-label').textContent = '건물 생성 중';
-            }
-          });
+      // 앞면
+      const front = document.createElement('div');
+      front.className = 'b-face';
+      front.style.cssText = `
+        width:${t.ww}px; height:${t.h}px;
+        background: linear-gradient(180deg, ${t.glass} 0%, ${t.glass} 35%, ${t.body} 35%, ${t.body} 100%);
+        left:0; top:0;
+      `;
 
-          // 히트테스트 소스 요청 (optional이므로 실패해도 OK)
-          xrSession.requestReferenceSpace('viewer').then(space => {
-            this.viewerSpace = space;
-            if (xrSession.requestHitTestSource) {
-              xrSession.requestHitTestSource({ space }).then(src => {
-                this.hitTestSource = src;
-                console.log('[AR] Hit-test source ready');
-              }).catch(e => {
-                console.warn('[AR] Hit-test not supported:', e);
-                // 히트테스트 미지원 → 기본 위치에 건물 표시
-                this.showAtDefaultPosition();
-              });
-            } else {
-              this.showAtDefaultPosition();
-            }
-          }).catch(e => {
-            console.warn('[AR] Viewer space failed:', e);
-            this.showAtDefaultPosition();
-          });
-        });
+      // 측면 (그림자 효과)
+      const side = document.createElement('div');
+      side.className = 'b-face';
+      side.style.cssText = `
+        width: 12px; height: ${t.h}px;
+        background: linear-gradient(180deg, ${shadeColor(t.glass,-25)} 0%, ${shadeColor(t.glass,-25)} 35%, ${shadeColor(t.body,-20)} 35%, ${shadeColor(t.body,-20)} 100%);
+        left: ${t.ww}px; top: 0;
+        transform: rotateY(90deg);
+        transform-origin: left center;
+      `;
 
-        scene.addEventListener('exit-vr', () => {
-          document.body.classList.remove('ar-active');
-          document.getElementById('splash').classList.remove('hidden');
-          document.getElementById('hud').classList.remove('visible');
-          this.reset();
-        });
-      },
+      // 지붕
+      const roof = document.createElement('div');
+      roof.className = 'b-face';
+      roof.style.cssText = `
+        width: ${t.ww}px; height: 12px;
+        background: ${t.roof};
+        left: 0; top: -12px;
+      `;
 
-      showAtDefaultPosition: function () {
-        // 히트테스트 불가 기기: 카메라 앞 1m에 고정 배치
-        const root = document.getElementById('diorama-root');
-        root.setAttribute('position', '0 -0.5 -1.2');
-        root.setAttribute('visible', 'true');
-        this.surfaceFound = true;
-        setStatus('✓ 기본 위치에 배치됨 · 탭하면 도시 생성');
-      },
+      // 안테나
+      const ant = document.createElement('div');
+      ant.className = 'b-face';
+      ant.style.cssText = `
+        width: 2px; height: 14px;
+        background: #aaaaaa;
+        left: ${t.ww/2 - 1}px; top: -26px;
+      `;
 
-      reset: function () {
-        this.hitTestSource = null;
-        this.viewerSpace   = null;
-        this.printing      = false;
-        this.printProgress = 0;
-        this.surfaceFound  = false;
-        updateProgress(0);
-        const root = document.getElementById('diorama-root');
-        root.setAttribute('visible', 'false');
-        setBuildings(0);
-      },
-
-      tick: function () {
-        const frame = this.el.frame;
-        if (!frame) return;
-
-        /* ── 히트테스트 처리 ── */
-        if (this.hitTestSource && !this.printing) {
-          const refSpace = this.el.renderer.xr.getReferenceSpace();
-          if (!refSpace) return;
-
-          const hits = frame.getHitTestResults(this.hitTestSource);
-          if (hits.length > 0) {
-            const pose = hits[0].getPose(refSpace);
-            const p = pose.transform.position;
-
-            const root = document.getElementById('diorama-root');
-            root.setAttribute('position', `${p.x} ${p.y} ${p.z}`);
-            root.setAttribute('visible', 'true');
-
-            if (!this.surfaceFound) {
-              this.surfaceFound = true;
-              setStatus('✓ 책상 감지! 탭하면 도시 생성');
-            }
-          } else {
-            if (!this.surfaceFound) {
-              setStatus('📡 책상 표면을 탐색 중...');
-            }
-          }
-        }
-
-        /* ── 건물 3D 프린팅 진행 ── */
-        if (this.printing && this.printProgress < 1.0) {
-          this.printProgress = Math.min(1.0, this.printProgress + 0.006);
-          updateProgress(this.printProgress);
-          setBuildings(this.printProgress);
-
-          if (this.printProgress >= 1.0) {
-            setStatus('🏙️ 도시 완성!');
-            document.getElementById('prog-label').textContent = '완성';
-          }
-        }
-      }
-    });
-
-    /* ──────────────────────────────────
-       건물 생성
-    ────────────────────────────────── */
-    const GRID   = 4;
-    const SPACE  = 0.55;
-    const CENTER = (GRID - 1) * SPACE * 0.5;
-
-    const TYPES = [
-      { h: 0.35, body: '#e8e4d8', glass: '#1ba1e2' },
-      { h: 0.60, body: '#d5d0c2', glass: '#0090ea' },
-      { h: 0.95, body: '#c0baaa', glass: '#0070d8' },
-      { h: 0.45, body: '#dedad0', glass: '#2ab5f5' },
-    ];
-
-    const LAYOUT = [
-      0,1,2,1,
-      2,0,1,3,
-      1,3,0,2,
-      0,2,1,0
-    ];
-
-    const container = document.getElementById('buildings-container');
-    const buildings = [];
-
-    for (let x = 0; x < GRID; x++) {
-      for (let z = 0; z < GRID; z++) {
-        const t = TYPES[LAYOUT[x * GRID + z]];
-        const px = x * SPACE - CENTER;
-        const pz = z * SPACE - CENTER;
-
-        const root = document.createElement('a-entity');
-        root.setAttribute('position', `${px} 0 ${pz}`);
-        root.setAttribute('scale', '1 0.001 1');
-
-        // 본체
-        const body = document.createElement('a-box');
-        body.setAttribute('width',     '0.35');
-        body.setAttribute('depth',     '0.35');
-        body.setAttribute('height',    String(t.h));
-        body.setAttribute('position',  `0 ${t.h / 2} 0`);
-        body.setAttribute('color',     t.body);
-        body.setAttribute('roughness', '0.85');
-        body.setAttribute('metalness', '0.05');
-        root.appendChild(body);
-
-        // 유리 상층부
-        const glass = document.createElement('a-box');
-        glass.setAttribute('width',    '0.26');
-        glass.setAttribute('depth',    '0.26');
-        glass.setAttribute('height',   String(t.h * 0.38));
-        glass.setAttribute('position', `0 ${t.h * 0.75} 0`);
-        glass.setAttribute('color',    t.glass);
-        glass.setAttribute('material', 'transparent: true; opacity: 0.65; metalness: 0.9; roughness: 0.05');
-        root.appendChild(glass);
-
-        // 옥상 안테나
-        const ant = document.createElement('a-cylinder');
-        ant.setAttribute('radius',   '0.015');
-        ant.setAttribute('height',   '0.08');
-        ant.setAttribute('position', `0 ${t.h + 0.04} 0`);
-        ant.setAttribute('color',    '#aaaaaa');
-        root.appendChild(ant);
-
-        container.appendChild(root);
-        buildings.push({ el: root, h: t.h });
-      }
+      b.append(front, side, roof, ant);
+      wrap.appendChild(b);
+      grid.appendChild(wrap);
+      buildings.push(b);
     }
+  }
 
-    function setBuildings(progress) {
-      const s = Math.max(0.001, progress);
-      buildings.forEach(b => {
-        b.el.setAttribute('scale', `1 ${s} 1`);
+  function shadeColor(hex, pct) {
+    const n = parseInt(hex.slice(1), 16);
+    const r = Math.max(0, Math.min(255, (n>>16) + pct));
+    const g = Math.max(0, Math.min(255, ((n>>8)&0xff) + pct));
+    const b2 = Math.max(0, Math.min(255, (n&0xff) + pct));
+    return '#' + [r,g,b2].map(x=>x.toString(16).padStart(2,'0')).join('');
+  }
+
+  /* ════════════════════════════════════════════
+     AR 상태
+  ════════════════════════════════════════════ */
+  let printing = false;
+  let progress = 0;
+  let animId   = null;
+  let stream   = null;
+
+  /* ════════════════════════════════════════════
+     카메라 시작
+  ════════════════════════════════════════════ */
+  async function startAR() {
+    const btn = document.getElementById('btn-start');
+    btn.textContent = '카메라 연결 중...';
+    btn.disabled = true;
+
+    try {
+      // 후면 카메라 우선 요청
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: 'environment' },
+          width:  { ideal: 1920 },
+          height: { ideal: 1080 }
+        },
+        audio: false
       });
-    }
 
-    /* ──────────────────────────────────
-       UI 헬퍼
-    ────────────────────────────────── */
-    function setStatus(msg) {
-      document.getElementById('status-bar').textContent = msg;
-    }
+      const video = document.getElementById('cam-video');
+      video.srcObject = stream;
 
-    function updateProgress(v) {
-      const pct = Math.round(v * 100);
-      document.getElementById('prog-fill').style.width = pct + '%';
-      document.getElementById('prog-pct').textContent  = pct + '%';
-    }
-
-    /* ──────────────────────────────────
-       AR 시작 / 종료
-    ────────────────────────────────── */
-    function startAR() {
-      const scene = document.getElementById('main-scene');
-
-      // A-Frame이 아직 로딩 중이면 잠시 대기
-      if (!scene.hasLoaded) {
-        scene.addEventListener('loaded', startAR, { once: true });
-        return;
+      // 후면 카메라면 미러 해제
+      const track = stream.getVideoTracks()[0];
+      const settings = track.getSettings();
+      if (settings.facingMode === 'environment') {
+        video.classList.add('rear');
       }
 
-      if (navigator.xr) {
-        navigator.xr.isSessionSupported('immersive-ar').then(supported => {
-          if (supported) {
-            typeof scene.enterAR === 'function' ? scene.enterAR() : scene.enterVR();
-          } else {
-            // WebXR AR 미지원 → 데스크탑 preview 모드
-            alert('이 기기/브라우저는 WebXR AR을 지원하지 않습니다.\nAndroid Chrome 또는 iOS Safari(16+)에서 열어주세요.');
-          }
-        }).catch(() => {
-          typeof scene.enterAR === 'function' ? scene.enterAR() : scene.enterVR();
-        });
+      await video.play();
+
+      // UI 전환
+      video.style.display = 'block';
+      document.getElementById('city-stage').classList.add('show');
+      document.getElementById('ar-ui').classList.add('on');
+      document.getElementById('splash').classList.add('gone');
+      document.getElementById('crosshair').classList.add('show', 'pulse');
+
+      setStatus('📡 책상 위를 향하고 화면을 탭하세요');
+
+      // 탭/클릭으로 건물 생성
+      document.getElementById('city-stage').addEventListener('click', startPrinting, { once: true });
+      document.getElementById('ar-ui').addEventListener('click', startPrinting, { once: true });
+
+    } catch (err) {
+      btn.textContent = '📷 AR 시작';
+      btn.disabled = false;
+
+      if (err.name === 'NotAllowedError') {
+        alert('카메라 권한이 거부되었습니다.\n브라우저 설정에서 카메라를 허용해주세요.');
+      } else if (err.name === 'NotFoundError') {
+        alert('카메라를 찾을 수 없습니다.');
       } else {
-        alert('WebXR을 지원하지 않는 브라우저입니다.\nAndroid Chrome을 사용해주세요.');
+        alert('카메라 오류: ' + err.message);
       }
     }
+  }
 
-    function exitAR() {
-      const scene = document.getElementById('main-scene');
-      if (scene.is('vr-mode') || scene.is('ar-mode')) {
-        scene.exitVR();
+  /* ════════════════════════════════════════════
+     건물 생성 시작
+  ════════════════════════════════════════════ */
+  function startPrinting() {
+    if (printing) return;
+    printing = true;
+
+    document.getElementById('crosshair').classList.remove('pulse');
+    document.getElementById('crosshair').classList.remove('show');
+    setStatus('🏗️ 도시를 3D 프린팅 중...');
+
+    function tick() {
+      progress = Math.min(1, progress + 0.007);
+      setProgress(progress);
+      setBuildings(progress);
+
+      if (progress < 1) {
+        animId = requestAnimationFrame(tick);
+      } else {
+        setStatus('🏙️ 도시 완성! 화면을 기울여 감상하세요');
+        // 기울기 감지로 시점 변화
+        startDeviceMotion();
       }
     }
+    animId = requestAnimationFrame(tick);
+  }
+
+  /* ════════════════════════════════════════════
+     건물 높이 업데이트
+  ════════════════════════════════════════════ */
+  function setBuildings(p) {
+    const s = Math.max(0.001, p);
+    buildings.forEach(b => {
+      b.style.transform = `scaleY(${s})`;
+    });
+  }
+
+  /* ════════════════════════════════════════════
+     진행률 UI
+  ════════════════════════════════════════════ */
+  function setProgress(v) {
+    const pct = Math.round(v * 100);
+    document.getElementById('prog-fill').style.width = pct + '%';
+    document.getElementById('prog-pct').textContent = pct + '%';
+  }
+
+  function setStatus(msg) {
+    document.getElementById('status').textContent = msg;
+  }
+
+  /* ════════════════════════════════════════════
+     기기 기울기로 도시 시점 변환
+  ════════════════════════════════════════════ */
+  function startDeviceMotion() {
+    if (!window.DeviceOrientationEvent) return;
+
+    window.addEventListener('deviceorientation', (e) => {
+      if (!e.beta && !e.gamma) return;
+      const rx = Math.max(-20, Math.min(20, (e.beta  - 45) * 0.5));
+      const rz = Math.max(-20, Math.min(20, e.gamma * 0.3));
+      document.getElementById('city-grid').style.transform =
+        `rotateX(${55 + rx}deg) rotateZ(${-15 + rz}deg)`;
+    }, { passive: true });
+
+    // iOS 13+: 권한 요청 필요
+    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+      DeviceOrientationEvent.requestPermission().catch(() => {});
+    }
+  }
+
+  /* ════════════════════════════════════════════
+     AR 종료
+  ════════════════════════════════════════════ */
+  function stopAR() {
+    if (animId) cancelAnimationFrame(animId);
+    if (stream) stream.getTracks().forEach(t => t.stop());
+
+    printing = false;
+    progress = 0;
+    stream   = null;
+    animId   = null;
+
+    setBuildings(0);
+    setProgress(0);
+
+    document.getElementById('cam-video').style.display = 'none';
+    document.getElementById('cam-video').srcObject = null;
+    document.getElementById('city-stage').classList.remove('show');
+    document.getElementById('ar-ui').classList.remove('on');
+    document.getElementById('splash').classList.remove('gone');
+    document.getElementById('btn-start').textContent = '📷 AR 시작';
+    document.getElementById('btn-start').disabled = false;
+  }
   </script>
 </body>
 </html>
