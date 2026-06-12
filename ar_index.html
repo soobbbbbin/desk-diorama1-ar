@@ -671,19 +671,11 @@
       </svg>
     </div>
 
-    <!-- 유리 조작 대시보드 -->
+    <!-- 유리 조작 대시보드 (자동 분석화 및 물리 터치 피드백에 맞게 경량화) -->
     <div id="dashboard">
       <div class="hud-title-container">
-        <div class="hud-archetype" id="hud-archetype-name">Chaos Neon</div>
-        <div class="hud-stats" id="hud-city-stats">GRID: 5x5 | ACTIVE</div>
-      </div>
-
-      <!-- 아키타입 선택 탭 -->
-      <div class="archetype-selector">
-        <button class="arch-btn active chaos" onclick="switchArchetype('chaos')">Chaos</button>
-        <button class="arch-btn harmony" onclick="switchArchetype('harmony')">Minimal</button>
-        <button class="arch-btn flow" onclick="switchArchetype('flow')">Dynamic</button>
-        <button class="arch-btn ruins" onclick="switchArchetype('ruins')">Ruins</button>
+        <div class="hud-archetype" id="hud-archetype-name">환경 분석 대기 중...</div>
+        <div class="hud-stats" id="hud-city-stats">GRID: 5x5 | STANDBY</div>
       </div>
 
       <!-- 빌드 프로세스 진행바 -->
@@ -691,27 +683,8 @@
         <div class="print-prog-fill" id="print-fill"></div>
       </div>
 
-      <!-- 제어 슬라이더 & 토글 버튼 -->
-      <div class="controls-grid">
-        <div class="slider-group">
-          <div class="slider-title">어수선함 (Density) <span id="clutter-val">70%</span></div>
-          <input type="range" id="slider-clutter" min="10" max="100" value="70" oninput="onClutterSlider(this.value)">
-        </div>
-        <div class="slider-group">
-          <div class="slider-title">활동 강도 (Wobble) <span id="activity-val">0%</span></div>
-          <input type="range" id="slider-activity" min="0" max="100" value="0" oninput="onActivitySlider(this.value)">
-        </div>
-      </div>
-
-      <div class="controls-grid">
-        <div class="toggle-row">
-          <button class="toggle-btn active" id="btn-night" onclick="toggleNightMode()">🌙 야간 조명</button>
-          <button class="toggle-btn" id="btn-rain" onclick="toggleRainMode()">🌧️ 날씨: 비</button>
-        </div>
-      </div>
-
       <div id="interaction-tip">
-        팁: 도시를 마우스/터치 드래그로 책상 위에 정렬하고,<br>빈 배경을 드래그해 카메라 각도를 움직이세요.
+        팁: 디오라마를 드래그하여 책상에 정렬하고,<br>건물들을 터치해 충격에 반응하는 물리 진동 피드백을 가해보세요.
       </div>
 
       <button class="btn-exit-panel" onclick="stopAR()">✕ AR 종료 및 복귀</button>
@@ -818,34 +791,91 @@
     }
     checkInAppBrowser();
 
-    // 아키타입 변경
+    // 아키타입 변경 (HUD 연동 및 프린트 개시)
     function switchArchetype(key) {
       if (activeArch === key && spawnedBuildings.length > 0) return;
       activeArch = key;
-      
-      // 탭 액티브 표시 변경
-      document.querySelectorAll('.arch-btn').forEach(btn => {
-        btn.classList.remove('active', 'chaos', 'harmony', 'flow', 'ruins');
-      });
-      const targetBtn = document.querySelector(`.arch-btn[onclick="switchArchetype('${key}')"]`);
-      targetBtn.classList.add('active', key);
 
       // 테마 클래스 교체
       const stage = document.getElementById('city-stage');
-      stage.className = 'show'; // Reset classes
-      stage.classList.add(ARCHETYPES[key].bodyClass);
+      if (stage) {
+        stage.className = 'show'; // Reset classes
+        stage.classList.add(ARCHETYPES[key].bodyClass);
+      }
 
-      // HUD 타이틀 변경
-      document.getElementById('hud-archetype-name').textContent = ARCHETYPES[key].name;
-      document.getElementById('hud-city-stats').textContent = ARCHETYPES[key].desc;
-      
-      // 슬라이더 반영
-      const targetDensity = Math.round(ARCHETYPES[key].density * 100);
-      document.getElementById('slider-clutter').value = targetDensity;
-      document.getElementById('clutter-val').textContent = targetDensity + '%';
+      // HUD 타이틀 및 정보 표시 갱신
+      const hudName = document.getElementById('hud-archetype-name');
+      if (hudName) hudName.textContent = ARCHETYPES[key].name;
+      const hudStats = document.getElementById('hud-city-stats');
+      if (hudStats) hudStats.textContent = ARCHETYPES[key].desc;
 
       // 3D 프린팅 트리거 빌드업
       start3DPrinting();
+    }
+
+    // 카메라 영상 조도/색조 분석을 통해 책상 환경에 어울리는 아키타입 테마 자동 매핑
+    function analyzeDeskEnvironment() {
+      const video = document.getElementById('cam-video');
+      
+      // 카메라 스트림이 꺼져 있거나 시뮬레이션 모드일 경우 예외 처리 (무작위)
+      if (!video || video.style.display === 'none' || video.readyState !== 4) {
+        console.log("카메라 스트림 미준비로 랜덤 테마 적용");
+        const themes = ['chaos', 'harmony', 'flow', 'ruins'];
+        const randomTheme = themes[Math.floor(Math.random() * themes.length)];
+        switchArchetype(randomTheme);
+        return;
+      }
+
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 30;
+        canvas.height = 30;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, 30, 30);
+        
+        const imgData = ctx.getImageData(0, 0, 30, 30);
+        const data = imgData.data;
+        
+        let totalR = 0, totalG = 0, totalB = 0;
+        const totalPixels = data.length / 4;
+        
+        for (let i = 0; i < data.length; i += 4) {
+          totalR += data[i];
+          totalG += data[i+1];
+          totalB += data[i+2];
+        }
+        
+        const avgR = totalR / totalPixels;
+        const avgG = totalG / totalPixels;
+        const avgB = totalB / totalPixels;
+        
+        // 밝기 계산 (Luminance)
+        const brightness = 0.299 * avgR + 0.587 * avgG + 0.114 * avgB;
+        
+        let selectedTheme = 'chaos'; // 기본 테마
+        
+        if (brightness > 140) {
+          // 매우 밝은 책상 환경 -> Nordic Calm (Harmony)
+          selectedTheme = 'harmony';
+        } else if (brightness < 60) {
+          // 어두컴컴한 환경 -> Post-Apocalyptic Amber (Ruins)
+          selectedTheme = 'ruins';
+        } else if (avgB > avgR + 15 && avgB > avgG + 15) {
+          // 차가운 색조/인공광 책상 -> Futuristic Metallic (Flow)
+          selectedTheme = 'flow';
+        } else {
+          // 일반 인공조명/중간 톤 -> Cyberpunk Neon (Chaos)
+          selectedTheme = 'chaos';
+        }
+        
+        console.log(`[환경 분석 결과] 밝기: ${brightness.toFixed(1)}, RGB: (${avgR.toFixed(1)}, ${avgG.toFixed(1)}, ${avgB.toFixed(1)}) => 테마: ${selectedTheme}`);
+        
+        setStatus(`🔍 책상 분석 완료: ${ARCHETYPES[selectedTheme].name}`);
+        switchArchetype(selectedTheme);
+      } catch (err) {
+        console.error("카메라 조도 분석 실패, 기본 카오스 모드로 스위칭:", err);
+        switchArchetype('chaos');
+      }
     }
 
     // 도시 빌딩 요소 동적 생성 (CSS 3D 5면체 직접 구성하여 플래트닝 전면 회피)
@@ -1020,10 +1050,11 @@
       startPX = e.clientX;
       startPY = e.clientY;
 
-      // 도시 무대를 직접 클릭한 경우 이동 모드(Pan)로 변경, 빈 바닥은 시점 회전(Orbit)
+      // 도시 무대를 직접 클릭한 경우 이동 모드(Pan)로 변경 및 건물 충격 흔들림 트리거
       if (e.target.closest('#city-stage')) {
         dragMode = 'pan';
         document.body.style.cursor = 'move';
+        triggerWobble(); // 충격 물리 진동 트리거
       } else {
         dragMode = 'orbit';
         document.body.style.cursor = 'grabbing';
@@ -1271,43 +1302,25 @@
     // 대시보드 컨트롤 패널 바인딩 이벤트
     // ════════════════════════════════════════════
 
-    // 1. 어수선함(밀도) 슬라이더 조작
-    function onClutterSlider(val) {
-      document.getElementById('clutter-val').textContent = val + '%';
-      
-      // 스캔 상태 아닐 때 실시간 재생성
-      if (!isPrinting) {
-        rebuildCity(val / 100);
-        
-        // 스케일을 즉시 1로 고정 (세로 방향 유지)
-        spawnedBuildings.forEach(b => {
-          b.style.transform = 'rotateX(-90deg) scaleY(1)';
-        });
-      }
-    }
-
-    // 2. 활동량(Wobble) 슬라이더 조작 (출렁거림 연출)
+    // 1. 건물 터치 충격 흔들림 피드백 구현 (1초 지수 감쇄 물리 적용)
     let wobbleTime = 0;
     let wobbleAnimId = null;
-    let targetWobbleAmount = 0;
-    let currentWobbleAmount = 0;
+    let wobbleStartTime = 0;
 
-    function onActivitySlider(val) {
-      document.getElementById('activity-val').textContent = val + '%';
-      targetWobbleAmount = val / 100;
-      
+    function triggerWobble() {
+      wobbleStartTime = Date.now();
       if (wobbleAnimId === null) {
         animateWobble();
       }
     }
 
-    // Wobble 삼각함수 가상 시뮬레이션
+    // Wobble 삼각함수 흔들림 감쇄 애니메이션
     function animateWobble() {
-      // Lerp로 워블 강도 보정
-      currentWobbleAmount += (targetWobbleAmount - currentWobbleAmount) * 0.1;
-      
-      if (currentWobbleAmount < 0.005 && targetWobbleAmount === 0) {
-        // 정지 시 세로로 정렬
+      const now = Date.now();
+      const elapsed = now - wobbleStartTime;
+
+      // 1초(1000ms) 경과 시 세로로 정렬 후 완전히 정지
+      if (elapsed >= 1000) {
         spawnedBuildings.forEach(b => {
           b.style.transform = 'rotateX(-90deg) scaleY(1) rotateX(0deg) rotateZ(0deg)';
         });
@@ -1315,40 +1328,43 @@
         return;
       }
 
-      wobbleTime += 0.15;
-      
-      // 스프링 물리 모방을 위한 사인 코사인 변조
-      const angleX = Math.sin(wobbleTime) * 15 * currentWobbleAmount;
-      const angleZ = Math.cos(wobbleTime * 0.7) * 12 * currentWobbleAmount;
-      const scaleSquash = 1.0 - (Math.abs(angleX) * 0.01);
+      // 시간 경과에 따라 1.0에서 0.0으로 정진동 진폭 감쇄 (강도)
+      const intensity = 1.0 - (elapsed / 1000);
+
+      wobbleTime += 0.35; // 빠른 댐핑 표현을 위해 주파수 상향
+
+      // 삼각함수 물리 변조 (터치 지점 중심 흔들림 모방)
+      const angleX = Math.sin(wobbleTime) * 25 * intensity;
+      const angleZ = Math.cos(wobbleTime * 0.75) * 20 * intensity;
+      const scaleSquash = 1.0 - (Math.abs(angleX) * 0.015);
 
       spawnedBuildings.forEach(b => {
         const origH = b.dataset.origH;
-        // 높이(origH)가 클수록 관성에 의해 더 크게 흔들림
-        const factor = origH / 100;
-        // rotateX(-90deg)를 맨 처음에 적용해 세로 축이 서 있게 한 상태에서 로컬 Wobble 회전을 가산합니다.
+        const factor = origH / 80; // 높은 빌딩이 관성으로 더 크게 움직임
         b.style.transform = `rotateX(-90deg) scaleY(${scaleSquash}) rotateX(${angleX * factor}deg) rotateZ(${angleZ * factor}deg)`;
       });
 
       wobbleAnimId = requestAnimationFrame(animateWobble);
     }
 
-    // 3. 야간 조명 토글
+    // 3. 야간 조명 토글 (수동 조작 비활성화로 가드 처리)
     function toggleNightMode() {
       const btn = document.getElementById('btn-night');
       const body = document.body;
       body.classList.toggle('night-mode');
       
-      if (body.classList.contains('night-mode')) {
-        btn.classList.add('active');
-        btn.textContent = '🌙 야간 조명: ON';
-      } else {
-        btn.classList.remove('active');
-        btn.textContent = '☀️ 주간 조명: ON';
+      if (btn) {
+        if (body.classList.contains('night-mode')) {
+          btn.classList.add('active');
+          btn.textContent = '🌙 야간 조명: ON';
+        } else {
+          btn.classList.remove('active');
+          btn.textContent = '☀️ 주간 조명: ON';
+        }
       }
     }
 
-    // 4. 날씨 비 토글 (디오라마 내 3D 공간 비 구현)
+    // 4. 날씨 비 토글 (디오라마 내 3D 공간 비 구현, UI 가드 추가)
     function toggleRainMode(forcedState = null) {
       const btn = document.getElementById('btn-rain');
       let enable = false;
@@ -1356,8 +1372,10 @@
       if (forcedState !== null) {
         enable = forcedState;
       } else {
-        btn.classList.toggle('active');
-        enable = btn.classList.contains('active');
+        if (btn) {
+          btn.classList.toggle('active');
+          enable = btn.classList.contains('active');
+        }
       }
       
       let rainGrid = document.getElementById('rain-grid-container');
@@ -1370,8 +1388,10 @@
       rainGrid.innerHTML = '';
       
       if (enable) {
-        btn.classList.add('active');
-        btn.textContent = '🌧️ 날씨: 비 (ON)';
+        if (btn) {
+          btn.classList.add('active');
+          btn.textContent = '🌧️ 날씨: 비 (ON)';
+        }
         
         // 디오라마 기단 면적(320px x 320px) 내부 구역에만 비를 3D로 스폰
         for (let i = 0; i < 45; i++) {
@@ -1391,8 +1411,10 @@
           rainGrid.appendChild(drop);
         }
       } else {
-        btn.classList.remove('active');
-        btn.textContent = '☀️ 날씨: 맑음';
+        if (btn) {
+          btn.classList.remove('active');
+          btn.textContent = '☀️ 날씨: 맑음';
+        }
       }
     }
 
@@ -1486,7 +1508,7 @@
           panX = 0; panY = 0;
           updateStageTransform();
           
-          switchArchetype('chaos'); // 기본 카오스 네온부터 시작
+          analyzeDeskEnvironment(); // 책상 환경 조도를 분석해 어울리는 테마 자동 적용
           
           // 이벤트 제거
           window.removeEventListener('click', triggerAnchor);
@@ -1530,7 +1552,7 @@
           cityStage.classList.add('show');
           panX = 0; panY = 0;
           updateStageTransform();
-          switchArchetype('chaos');
+          analyzeDeskEnvironment(); // 카메라 오프라인 분석 (무작위)
         }
       }
     }
@@ -1551,10 +1573,18 @@
 
       // UI 초기화
       document.body.classList.remove('night-mode');
-      document.getElementById('btn-night').classList.add('active');
-      document.getElementById('btn-night').textContent = '🌙 야간 조명: ON';
-      document.getElementById('btn-rain').classList.remove('active');
-      document.getElementById('btn-rain').textContent = '☀️ 날씨: 맑음';
+      
+      const btnNight = document.getElementById('btn-night');
+      if (btnNight) {
+        btnNight.classList.add('active');
+        btnNight.textContent = '🌙 야간 조명: ON';
+      }
+      
+      const btnRain = document.getElementById('btn-rain');
+      if (btnRain) {
+        btnRain.classList.remove('active');
+        btnRain.textContent = '☀️ 날씨: 맑음';
+      }
 
       const video = document.getElementById('cam-video');
       video.style.display = 'none';
