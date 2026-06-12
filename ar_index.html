@@ -7,98 +7,6 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
 
-  <!-- 모바일 온스크린 디버그 콘솔 (실시간 오류 진단용) -->
-  <script>
-    (function() {
-      const consoleDiv = document.createElement('div');
-      consoleDiv.id = 'debug-log-console';
-      consoleDiv.style.cssText = 'position: fixed; bottom: 10px; left: 10px; right: 10px; height: 120px; background: rgba(0,0,0,0.85); color: #00ffcc; font-family: monospace; font-size: 10px; overflow-y: auto; z-index: 9999; border: 1px solid #00f0ff; border-radius: 6px; padding: 6px; pointer-events: auto; display: none;';
-      
-      const toggleBtn = document.createElement('button');
-      toggleBtn.textContent = '🛠️ 디버그 로그';
-      toggleBtn.style.cssText = 'position: fixed; bottom: 140px; right: 10px; z-index: 10000; padding: 6px 12px; background: #0f172a; border: 1px solid #00f0ff; color: #00f0ff; border-radius: 4px; font-size: 11px; font-weight: bold; cursor: pointer;';
-      toggleBtn.onclick = () => {
-        consoleDiv.style.display = consoleDiv.style.display === 'none' ? 'block' : 'none';
-      };
-      
-      document.addEventListener('DOMContentLoaded', () => {
-        document.body.appendChild(consoleDiv);
-        document.body.appendChild(toggleBtn);
-      });
-      
-      function logToScreen(type, args) {
-        const msg = Array.from(args).map(arg => {
-          if (typeof arg === 'object') {
-            try { return JSON.stringify(arg); } catch(e) { return arg.toString(); }
-          }
-          return arg;
-        }).join(' ');
-        
-        const logLine = document.createElement('div');
-        logLine.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
-        logLine.style.padding = '2px 0';
-        logLine.innerHTML = `[\${new Date().toLocaleTimeString()}] <span style="color:\${type === 'error' ? '#ff3366' : type === 'warn' ? '#ffcc00' : '#00ffcc'}">\${type.toUpperCase()}</span>: \${msg}`;
-        consoleDiv.appendChild(logLine);
-        consoleDiv.scrollTop = consoleDiv.scrollHeight;
-      }
-      
-      window.onerror = function(message, source, lineno, colno, error) {
-        logToScreen('error', [`\${message} at \${source}:\${lineno}:\${colno}`]);
-        return false;
-      };
-      
-      const origError = console.error;
-      console.error = function() {
-        logToScreen('error', arguments);
-        origError.apply(console, arguments);
-      };
-      
-      const origWarn = console.warn;
-      console.warn = function() {
-        logToScreen('warn', arguments);
-        origWarn.apply(console, arguments);
-      };
-    })();
-  </script>
-
-  <!-- A-Frame & AR.js CDN (jsDelivr 고속 CDN 로드로 네트워크 타임아웃 방지) -->
-  <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@master/aframe/build/aframe-ar.js"></script>
-
-  <!-- 엔진 로딩 가드 시스템 (덜 준비된 상태에서 클릭 시 발생하는 크래시 차단) -->
-  <script>
-    window.addEventListener('load', () => {
-      const startBtn = document.getElementById('btn-start');
-      if (startBtn) {
-        startBtn.disabled = true;
-        startBtn.textContent = "엔진 로딩 중 (A-Frame)...";
-      }
-      
-      let checkCount = 0;
-      const checkInterval = setInterval(() => {
-        checkCount++;
-        const isAFrameLoaded = typeof AFRAME !== 'undefined';
-        const isThreeLoaded = isAFrameLoaded && typeof AFRAME.THREE !== 'undefined';
-        
-        if (isAFrameLoaded && isThreeLoaded) {
-          clearInterval(checkInterval);
-          if (startBtn) {
-            startBtn.disabled = false;
-            startBtn.textContent = "📷 AR 카메라 연결 시작";
-          }
-          console.log("A-Frame & THREE.js loaded successfully!");
-        } else if (checkCount > 50) {
-          clearInterval(checkInterval);
-          if (startBtn) {
-            startBtn.disabled = false;
-            startBtn.textContent = "📷 AR 카메라 연결 시작 (로딩 지연)";
-          }
-          console.warn("A-Frame loading timeout.");
-        }
-      }, 200);
-    });
-  </script>
-
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -128,24 +36,8 @@
     }
     #cam-video.rear { transform: scaleX(1); } /* 후면 카메라는 거울 반사 해제 */
     
-    body.night-mode video {
+    body.night-mode #cam-video {
       filter: brightness(0.35) contrast(1.1) saturate(0.8) sepia(0.1);
-    }
-
-    a-scene, .a-canvas {
-      pointer-events: none !important;
-    }
-
-    /* AR 활성화 시 배경 비디오 레이아웃 및 z-index 강제 고정 */
-    body.ar-active {
-      background: transparent !important;
-    }
-    body.ar-active video {
-      position: fixed !important;
-      top: 0 !important; left: 0 !important;
-      width: 100vw !important; height: 100vh !important;
-      object-fit: cover !important;
-      z-index: 1 !important;
     }
 
     /* ══════════════════════════════
@@ -153,14 +45,15 @@
     ══════════════════════════════ */
     #city-stage {
       position: fixed;
-      inset: 0;
-      width: 100vw; height: 100vh;
+      bottom: 240px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 380px; height: 380px;
       z-index: 5;
-      pointer-events: none; /* 디오라마 외부의 탭 인식 및 백그라운드 영상 상호작용 지원 */
+      pointer-events: auto;
       perspective: 1000px;
-      perspective-origin: 50% 50%;
       display: none;
-      transition: opacity 0.4s ease;
+      transition: opacity 0.5s ease;
     }
     #city-stage.show { display: block; }
 
@@ -183,7 +76,6 @@
       transform: translateZ(-2px);
       transform-style: preserve-3d;
       backdrop-filter: blur(8px);
-      pointer-events: auto !important;
     }
 
     .diorama-base::before {
@@ -212,8 +104,6 @@
       /* 기본적으로 세로로 서 있게 하기 위해 rotateX(-90deg) 적용 */
       transform: rotateX(-90deg) scaleY(0.001);
       transition: transform 0.05s linear;
-      pointer-events: auto !important;
-      cursor: pointer;
     }
 
     .b-face {
@@ -1007,11 +897,10 @@
 
     // 카메라 영상 조도/색조 분석을 통해 책상 환경에 어울리는 아키타입 테마 자동 매핑
     function analyzeDeskEnvironment() {
-      // AR.js 비디오 또는 백업 비디오 획득
-      const video = document.querySelector('video:not(#cam-video)') || document.getElementById('cam-video');
+      const video = document.getElementById('cam-video');
       
       // 카메라 스트림이 꺼져 있거나 시뮬레이션 모드일 경우 예외 처리 (무작위)
-      if (!video || video.readyState !== 4) {
+      if (!video || video.style.display === 'none' || video.readyState !== 4) {
         console.log("카메라 스트림 미준비로 랜덤 테마 적용");
         const themes = ['chaos', 'harmony', 'flow', 'ruins'];
         const randomTheme = themes[Math.floor(Math.random() * themes.length)];
@@ -1192,11 +1081,6 @@
           }
 
           b.append(front, back, left, right, top);
-          b.style.pointerEvents = 'auto';
-          b.addEventListener('pointerdown', (e) => {
-            e.stopPropagation();
-            triggerWobble();
-          });
           root.appendChild(b);
           spawnedBuildings.push(b);
         }
@@ -1206,16 +1090,9 @@
     // ════════════════════════════════════════════
     // 인터랙션 (Pan, Orbit, Zoom) 제어 상태
     // ════════════════════════════════════════════
-        // ════════════════════════════════════════════
-    // 인터랙션 (Pan, Orbit, Zoom) 제어 상태
-    // ════════════════════════════════════════════
     let panX = 0, panY = 0;
     let pitch = 55, yaw = -15;
     let zoomScale = 0.9;
-
-    // AR.js 마커 추적 변수
-    let markerVisible = false;
-    const ABSOLUTE_SCALE = 0.72;
 
     let isPointerDown = false;
     let dragMode = 'orbit'; // 'orbit' = 카메라 회전, 'pan' = 도시 이동
@@ -1228,347 +1105,155 @@
     const cityStage = document.getElementById('city-stage');
     const cityGrid = document.getElementById('city-grid');
 
-    // AR 상태 관리 변수
-    let isARModeActive = false;
-    let hasPrintedOnce = false;
-
-    // 자이로/센서 상태 및 오리엔테이션 저장 객체
-    let currentOrientation = { alpha: 0, beta: 0, gamma: 0 };
-    let lastTrackedPosition = null;
-    let lastTrackedRotationMatrix = null;
-    let anchorOrientation = null;
-
-    // 자이로 센서 수신 리스너 등록
-    window.addEventListener('deviceorientation', (e) => {
-      if (e.alpha !== null) {
-        currentOrientation.alpha = e.alpha;
-        currentOrientation.beta = e.beta;
-        currentOrientation.gamma = e.gamma;
-      }
-    }, true);
-
-    // 자이로 각도 -> 쿼터니언 변환 헬퍼 (THREE.js 방식)
-    function getQuaternionFromOrientation(alpha, beta, gamma) {
-      const degToRad = Math.PI / 180;
-      // deviceorientation 각도는 Z-X'-Y'' (ZXY) 회전 구조이며 THREE.js의 YXZ 오더 매핑과 호환됩니다.
-      const euler = new THREE.Euler(
-        beta * degToRad,
-        alpha * degToRad,
-        -gamma * degToRad,
-        'YXZ'
-      );
-      return new THREE.Quaternion().setFromEuler(euler);
-    }
-
-    // 자이로 센서 권한 요청 (iOS 13+ 기기 대응용)
-    async function requestGyroPermission() {
-      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-        try {
-          const permissionState = await DeviceOrientationEvent.requestPermission();
-          if (permissionState === 'granted') {
-            console.log("Gyroscope permission granted");
-          }
-        } catch (error) {
-          console.warn("DeviceOrientation permission request failed:", error);
-        }
-      }
-    }
-
-    // 디오라마 위치 및 스테이지 자체 수평 회전(Roll) 업데이트
+    // 디오라마 위치 업데이트
     function updateStageTransform() {
-      // AR.js의 카메라가 폰의 기울어짐(Roll)을 자체 해결하므로 수평 유지만 적용
-      if (!markerVisible) {
-        cityStage.style.transform = '';
-      }
+      cityStage.style.left = `calc(50% + ${panX}px)`;
+      cityStage.style.bottom = `calc(240px - ${panY}px)`;
     }
 
-    // 디오라마 3D 회전 업데이트 (A-Frame / AR.js 매트릭스 동기화 및 데스크톱 폴백 지원)
+    // 디오라마 회전 업데이트 (패럴랙스 포함)
     function updateGridTransform() {
-      const THREE = window.THREE || (window.AFRAME && window.AFRAME.THREE);
-      
-      if (markerVisible) {
-        const scene = document.querySelector('a-scene');
-        if (scene && scene.camera) {
-          const camera = scene.camera; // THREE.Camera
-          const anchor = document.getElementById('ar-anchor-point');
-          
-          if (anchor && anchor.object3D && THREE) {
-            // THREE.js 객체 획득 및 MatrixWorld 갱신
-            const position = new THREE.Vector3();
-            anchor.object3D.updateMatrixWorld(true);
-            position.setFromMatrixPosition(anchor.object3D.matrixWorld);
-            
-            // 💡 월드 캐시 갱신 (자이로 연동용)
-            lastTrackedPosition = position.clone();
-            lastTrackedRotationMatrix = new THREE.Matrix4().extractRotation(anchor.object3D.matrixWorld);
-            anchorOrientation = { ...currentOrientation };
-
-            // 정규화 뷰포트 공간 (-1 ~ 1)로 가상 3D 좌표 투영
-            const tempV = position.clone();
-            tempV.project(camera);
-            
-            // 스크린 픽셀 좌표 변환
-            const screenX = (tempV.x * 0.5 + 0.5) * window.innerWidth;
-            const screenY = (-(tempV.y * 0.5) + 0.5) * window.innerHeight;
-            
-            // 카메라와 마커 간의 실제 물리 거리 측정
-            const cameraPosition = new THREE.Vector3();
-            cameraPosition.setFromMatrixPosition(camera.matrixWorld);
-            const distance = position.distanceTo(cameraPosition);
-            
-            // 마커의 회전 정보 오일러 앵글 추출
-            const rotation = new THREE.Euler();
-            rotation.setFromRotationMatrix(anchor.object3D.matrixWorld);
-            
-            const rotX = rotation.x * 180 / Math.PI;
-            const rotY = rotation.y * 180 / Math.PI;
-            const rotZ = rotation.z * 180 / Math.PI;
-            
-            // 거리 비례 다이나믹 스케일링 계산
-            const baseDistance = 4.0;
-            const distScale = Math.max(0.15, Math.min(2.5, baseDistance / distance));
-            const finalScale = ABSOLUTE_SCALE * distScale * zoomScale;
-            
-            // 스크린 중앙 대비 오프셋
-            const screenOffsetX = screenX - (window.innerWidth / 2) + panX;
-            const screenOffsetY = screenY - (window.innerHeight / 2) + panY;
-            
-            cityGrid.style.transform = `
-              translate3d(${screenOffsetX}px, ${screenOffsetY}px, ${-distance * 120}px)
-              rotateX(${90 + rotX}deg)
-              rotateY(${rotY}deg)
-              rotateZ(${rotZ + (yaw - (-15))}deg)
-              scale3d(${finalScale}, ${finalScale}, ${finalScale})
-            `;
-
-            const hudStats = document.getElementById('hud-city-stats');
-            if (hudStats) {
-              hudStats.textContent = `AR: TRACKED | DIST: ${distance.toFixed(2)} | SCALE: ${finalScale.toFixed(2)}`;
-            }
-          }
-        }
-      } else if (isARModeActive && lastTrackedPosition && anchorOrientation && THREE) {
-        // 💡 자이로 월드 고정 (Visual-Gyro Fusion): 마커 유실 시 기기 각도의 변화(Delta)만큼 3D 위치를 보정하여 제자리에 고정
-        const scene = document.querySelector('a-scene');
-        if (scene && scene.camera) {
-          const camera = scene.camera;
-          
-          const qCurrent = getQuaternionFromOrientation(currentOrientation.alpha, currentOrientation.beta, currentOrientation.gamma);
-          const qAnchor = getQuaternionFromOrientation(anchorOrientation.alpha, anchorOrientation.beta, anchorOrientation.gamma);
-          
-          // 회전 오프셋 구하기
-          const qDelta = qCurrent.clone().multiply(qAnchor.clone().invert());
-          const qInvert = qDelta.clone().invert();
-          
-          // 1. 카메라 기준 마커의 가상 상대 3D 좌표 (카메라가 회전하면 마커 벡터는 반대로 회전)
-          const virtualPosition = lastTrackedPosition.clone().applyQuaternion(qInvert);
-          
-          // 2. 가상 3D 회전 행렬 계산
-          const virtualRotationMatrix = new THREE.Matrix4().makeRotationFromQuaternion(qInvert).multiply(lastTrackedRotationMatrix);
-          const rotation = new THREE.Euler().setFromRotationMatrix(virtualRotationMatrix);
-          
-          // 3. 카메라 투영 행렬을 사용하여 스크린 좌표로 다이렉트 뷰포트 사상
-          const tempV = virtualPosition.clone();
-          tempV.applyMatrix4(camera.projectionMatrix);
-          
-          const screenX = (tempV.x * 0.5 + 0.5) * window.innerWidth;
-          const screenY = (-(tempV.y * 0.5) + 0.5) * window.innerHeight;
-          
-          const distance = virtualPosition.length();
-          
-          const rotX = rotation.x * 180 / Math.PI;
-          const rotY = rotation.y * 180 / Math.PI;
-          const rotZ = rotation.z * 180 / Math.PI;
-          
-          const baseDistance = 4.0;
-          const distScale = Math.max(0.15, Math.min(2.5, baseDistance / distance));
-          const finalScale = ABSOLUTE_SCALE * distScale * zoomScale;
-          
-          const screenOffsetX = screenX - (window.innerWidth / 2) + panX;
-          const screenOffsetY = screenY - (window.innerHeight / 2) + panY;
-          
-          cityGrid.style.transform = `
-            translate3d(${screenOffsetX}px, ${screenOffsetY}px, ${-distance * 120}px)
-            rotateX(${90 + rotX}deg)
-            rotateY(${rotY}deg)
-            rotateZ(${rotZ + (yaw - (-15))}deg)
-            scale3d(${finalScale}, ${finalScale}, ${finalScale})
-          `;
-
-          const hudStats = document.getElementById('hud-city-stats');
-          if (hudStats) {
-            hudStats.textContent = `AR: GYRO HOLD | DIST: ${distance.toFixed(2)} | SCALE: ${finalScale.toFixed(2)}`;
-          }
-        }
-      } else if (!isARModeActive) {
-        // 데스크톱 / 마커 유실 시 턴 15 고유의 오빗 및 휠 줌 작동
-        const finalPitch = pitch + (parallaxY * 12);
-        const finalYaw = yaw + (parallaxX * 12);
-        cityGrid.style.transform = `
-          translate3d(${panX}px, ${panY}px, -450px)
-          rotateX(${finalPitch}deg)
-          rotateZ(${finalYaw}deg)
-          scale3d(${zoomScale}, ${zoomScale}, ${zoomScale})`;
-
-        const hudStats = document.getElementById('hud-city-stats');
-        if (hudStats) {
-          hudStats.textContent = `AR: SEARCHING MARKER | DESKTOP MODE`;
-        }
-      }
+      // 마우스 패럴랙스는 뷰 시점(rotate)에 가산하여 몰입형 3D 연출 구현
+      const finalPitch = pitch + (parallaxY * 12);
+      const finalYaw = yaw + (parallaxX * 12);
+      cityGrid.style.transform = `rotateX(${finalPitch}deg) rotateZ(${finalYaw}deg) scale3d(${zoomScale}, ${zoomScale}, ${zoomScale})`;
     }
 
     // ════════════════════════════════════════════
-    // 마우스 및 터치 드래그/오빗/줌 제어 리스너
+    // 마우스 및 터치 제스처 바인딩
     // ════════════════════════════════════════════
-    let isDragging = false;
-    let previousMousePosition = { x: 0, y: 0 };
-    let touchStartDist = 0;
-    let touchStartScale = 1;
-    let isMultiTouch = false;
-
-    // 공통 드래그 방지 필터 (대시보드 등 UI 터치 시 상호작용 차단)
-    function shouldIgnoreInteraction(target) {
-      return !!target.closest('#dashboard') || 
-             !!target.closest('#btn-start') || 
-             !!target.closest('#inapp-warning') || 
-             !!target.closest('#dev-panel') || 
-             !!target.closest('#btn-dev-toggle') ||
-             !!target.closest('#splash') ||
-             !!target.closest('#status');
-    }
-
-    // 모바일 터치 이벤트
-    window.addEventListener('touchstart', (e) => {
-      if (shouldIgnoreInteraction(e.target)) return;
+    
+    // 포인터 이벤트 통합 (Touch & Mouse)
+    window.addEventListener('pointerdown', (e) => {
+      // UI 요소 조작 시 드래그 동작 무시
+      if (e.target.closest('#dashboard') || e.target.closest('#splash') || e.target.closest('#status')) return;
       
-      if (e.touches.length === 1) {
-        isDragging = true;
-        isMultiTouch = false;
-        previousMousePosition = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-      } else if (e.touches.length === 2) {
-        isDragging = false;
-        isMultiTouch = true;
-        
-        // 핀치 줌
-        const dx = e.touches[0].clientX - e.touches[1].clientX;
-        const dy = e.touches[0].clientY - e.touches[1].clientY;
-        touchStartDist = Math.sqrt(dx*dx + dy*dy);
-        touchStartScale = zoomScale;
-        
-        // 두 손가락 중심점 계산
-        previousMousePosition = {
-          x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
-          y: (e.touches[0].clientY + e.touches[1].clientY) / 2
-        };
+      isPointerDown = true;
+      startPX = e.clientX;
+      startPY = e.clientY;
+
+      // 도시 무대를 직접 클릭한 경우 이동 모드(Pan)로 변경 및 건물 충격 흔들림 트리거
+      if (e.target.closest('#city-stage')) {
+        dragMode = 'pan';
+        document.body.style.cursor = 'move';
+        triggerWobble(); // 충격 물리 진동 트리거
+      } else {
+        dragMode = 'orbit';
+        document.body.style.cursor = 'grabbing';
       }
     });
 
-    window.addEventListener('touchmove', (e) => {
-      if (shouldIgnoreInteraction(e.target)) return;
-      
-      if (e.touches.length === 1 && isDragging) {
-        const deltaX = e.touches[0].clientX - previousMousePosition.x;
-        const deltaY = e.touches[0].clientY - previousMousePosition.y;
-        
-        yaw += deltaX * 0.45;
-        if (!markerVisible) {
-          pitch = Math.max(10, Math.min(85, pitch - deltaY * 0.45));
-        }
-        
-        previousMousePosition = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-      } else if (e.touches.length === 2 && isMultiTouch) {
-        // 1. 핀치 줌
-        const dx = e.touches[0].clientX - e.touches[1].clientX;
-        const dy = e.touches[0].clientY - e.touches[1].clientY;
-        const dist = Math.sqrt(dx*dx + dy*dy);
-        if (touchStartDist > 0) {
-          const factor = dist / touchStartDist;
-          zoomScale = Math.max(0.25, Math.min(3.0, touchStartScale * factor));
-        }
-        
-        // 2. 투핑거 드래그 팬(이동)
-        const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-        const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-        const deltaX = midX - previousMousePosition.x;
-        const deltaY = midY - previousMousePosition.y;
-        
-        panX += deltaX;
-        panY += deltaY;
-        
-        previousMousePosition = { x: midX, y: midY };
-      }
-    });
-
-    window.addEventListener('touchend', (e) => {
-      if (e.touches.length === 0) {
-        isDragging = false;
-        isMultiTouch = false;
-      } else if (e.touches.length === 1) {
-        isDragging = true;
-        isMultiTouch = false;
-        previousMousePosition = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-      }
-    });
-
-    // 데스크톱 마우스 이벤트
-    window.addEventListener('mousedown', (e) => {
-      if (shouldIgnoreInteraction(e.target)) return;
-      isDragging = true;
-      previousMousePosition = { x: e.clientX, y: e.clientY };
-    });
-
-    window.addEventListener('mousemove', (e) => {
-      if (!isDragging) return;
-      
+    window.addEventListener('pointermove', (e) => {
       // 마우스 패럴랙스 타겟값 갱신 (드래그하지 않을 때 작동)
-      if (!isDragging) {
+      if (!isPointerDown) {
         targetParallaxX = (e.clientX / window.innerWidth) * 2 - 1;
         targetParallaxY = (e.clientY / window.innerHeight) * 2 - 1;
         return;
       }
 
-      const deltaX = e.clientX - previousMousePosition.x;
-      const deltaY = e.clientY - previousMousePosition.y;
-      
-      if (e.buttons === 1) { // 마우스 좌클릭: 회전
-        yaw += deltaX * 0.45;
-        if (!markerVisible) {
-          pitch = Math.max(10, Math.min(85, pitch - deltaY * 0.45));
-        }
-      } else if (e.buttons === 2) { // 마우스 우클릭: 이동
-        panX += deltaX;
-        panY += deltaY;
-      }
-      previousMousePosition = { x: e.clientX, y: e.clientY };
-    });
+      const dx = e.clientX - startPX;
+      const dy = e.clientY - startPY;
+      startPX = e.clientX;
+      startPY = e.clientY;
 
-    window.addEventListener('mouseup', () => { isDragging = false; });
-    window.addEventListener('contextmenu', (e) => {
-      if (!e.target.closest('#dashboard')) {
-        e.preventDefault();
+      if (dragMode === 'pan') {
+        panX += dx;
+        panY += dy;
+        updateStageTransform();
+      } else if (dragMode === 'orbit') {
+        yaw += dx * 0.4;
+        pitch = Math.max(15, Math.min(85, pitch - dy * 0.4)); // 고각 한계 클램프
+        updateGridTransform();
       }
     });
 
-    // 마우스 휠 줌
+    window.addEventListener('pointerup', () => {
+      isPointerDown = false;
+      document.body.style.cursor = 'default';
+    });
+
+    // 마우스 휠 줌 기능
     window.addEventListener('wheel', (e) => {
-      if (e.target.closest('#dashboard')) return;
-      const factor = e.deltaY < 0 ? 1.05 : 0.95;
-      zoomScale = Math.max(0.25, Math.min(3.0, zoomScale * factor));
+      if (!cityStage.classList.contains('show')) return;
+      zoomScale = Math.max(0.4, Math.min(2.0, zoomScale - e.deltaY * 0.001));
+      updateGridTransform();
+    }, { passive: true });
+
+    // 모바일 터치 핀치 줌 제어 (2점 터치)
+    let initialTouchDist = 0;
+    window.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 2 && cityStage.classList.contains('show')) {
+        let dist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        if (initialTouchDist === 0) {
+          initialTouchDist = dist;
+        } else {
+          let factor = dist / initialTouchDist;
+          zoomScale = Math.max(0.4, Math.min(2.0, zoomScale * (1 + (factor - 1) * 0.2)));
+          initialTouchDist = dist;
+          updateGridTransform();
+        }
+      }
+    }, { passive: true });
+
+    window.addEventListener('touchend', (e) => {
+      if (e.touches.length < 2) initialTouchDist = 0;
     });
 
-    // 기존 자이로 스텁 호환용 선언
+    // ════════════════════════════════════════════
+    // 자이로센서 시점 연동 (Mobile AR 모션)
+    // ════════════════════════════════════════════
     let gyroActive = false;
+    let initialBeta = null;
+    let initialGamma = null;
+
     function startGyroscope() {
-      gyroActive = true;
+      if (!window.DeviceOrientationEvent) return;
+
+      const handleOrientation = (e) => {
+        if (!gyroActive || isPointerDown) return;
+        if (!e.beta && !e.gamma) return;
+
+        // 기준각 할당
+        if (initialBeta === null) {
+          initialBeta = e.beta;
+          initialGamma = e.gamma;
+          return;
+        }
+
+        // 상대적인 기울기로 패럴랙스 타겟 오프셋 매핑
+        let deltaBeta = e.beta - initialBeta;
+        let deltaGamma = e.gamma - initialGamma;
+
+        targetParallaxX = Math.max(-1, Math.min(1, deltaGamma * 0.05));
+        targetParallaxY = Math.max(-1, Math.min(1, deltaBeta * 0.05));
+      };
+
+      // iOS 13+ 권한 확인 대응
+      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission()
+          .then(permissionState => {
+            if (permissionState === 'granted') {
+              gyroActive = true;
+              window.addEventListener('deviceorientation', handleOrientation, { passive: true });
+            }
+          })
+          .catch(console.error);
+      } else {
+        gyroActive = true;
+        window.addEventListener('deviceorientation', handleOrientation, { passive: true });
+      }
     }
 
-    // 60FPS 보간 렌더 루프
+    // 60FPS 보간 렌더 루프 (패럴랙스 감도 증대)
     function renderLoop() {
+      // 부드러운 Lerp 적용
       parallaxX += (targetParallaxX - parallaxX) * 0.08;
       parallaxY += (targetParallaxY - parallaxY) * 0.08;
       
-      const cityStage = document.getElementById('city-stage');
-      if (cityStage && cityStage.classList.contains('show')) {
+      if (cityStage.classList.contains('show')) {
         updateGridTransform();
       }
       requestAnimationFrame(renderLoop);
@@ -1820,21 +1505,13 @@
        AR 카메라 라이프사이클 관리
     ════════════════════════════════════════════ */
     let cameraStream = null;
-    let originalBodyStyle = '';
-    let originalBodyClass = '';
-    let originalHtmlStyle = '';
-    let originalHtmlClass = '';
 
     async function startAR() {
-      // 💡 [iOS Safari 보안 정책 대응] 
-      // 비동기 딜레이가 발생하기 전에 사용자 인터랙션 동기적 컨텍스트에서 자이로 권한을 즉시 요청합니다.
-      await requestGyroPermission();
-
       const startBtn = document.getElementById('btn-start');
-      startBtn.textContent = '카메라 권한 확인 중...';
+      startBtn.textContent = '카메라 연결 검증 중...';
       startBtn.disabled = true;
 
-      // ⚠️ 이전 스트림이 열려 있다면 즉시 정지
+      // ⚠️ 안전장치: 혹시 이전에 사용하던 스트림이 남아있다면 완벽하게 릴리즈 처리하여 장치 락 방지
       if (cameraStream) {
         try {
           cameraStream.getTracks().forEach(track => track.stop());
@@ -1850,183 +1527,133 @@
           throw new Error('SecurityError: 카메라 접근은 HTTPS 환경 또는 localhost에서만 허용됩니다. 현재 프로토콜: ' + window.location.protocol);
         }
 
-        // AR 및 공간 트래킹 변수 셋팅
-        isARModeActive = true;
-        hasPrintedOnce = false;
-        markerVisible = false;
-        lastTrackedPosition = null;
-        lastTrackedRotationMatrix = null;
-        anchorOrientation = null;
+        // 1단계: 후면 카메라 및 일반적인 비디오 획득 시도 (PC 및 웹 브라우저 전체 대응용)
+        try {
+          cameraStream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: { ideal: 'environment' }
+            },
+            audio: false
+          });
+        } catch (err1) {
+          console.warn("1단계 카메라 획득 실패, 대기 후 기본 웹캠 대체 시도:", err1);
+          // 브라우저가 카메라 하드웨어 리소스를 해제(release)할 시간을 주기 위해 300ms 대기
+          await new Promise(resolve => setTimeout(resolve, 300));
 
-        // 원본 레이아웃 스타일 캐싱
-        originalBodyStyle = document.body.getAttribute('style') || '';
-        originalBodyClass = document.body.className || '';
-        originalHtmlStyle = document.documentElement.getAttribute('style') || '';
-        originalHtmlClass = document.documentElement.className || '';
+          // 2단계: facingMode 상세 제약 없이 비디오 획득 (PC 환경 등 대응)
+          cameraStream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false
+          });
+        }
 
-        // AR 활성화 클래스 추가하여 비디오 가시성 확보 및 body 배경 투명화
-        document.body.classList.add('ar-active');
+        const video = document.getElementById('cam-video');
+        video.srcObject = cameraStream;
 
-        // UI 모드 대기 상태 표시
+        // 카메라 방향 상태 획득 및 미러 처리 설정
+        const track = cameraStream.getVideoTracks()[0];
+        const settings = track.getSettings();
+        if (settings && settings.facingMode === 'environment') {
+          video.classList.add('rear');
+        } else {
+          video.classList.remove('rear');
+        }
+
+        // 비디오 display 요소를 먼저 block으로 변경하여 재생 거부를 방지
+        video.style.display = 'block';
+
+        // play() 호출 시 브라우저 정책(오토플레이 정책) 예외 방어적 캐치
+        try {
+          await video.play();
+        } catch (playErr) {
+          console.warn("video.play() 호출 거부됨 (사용자 동작 대기):", playErr);
+        }
+
+        // 씬 구성 및 HUD 활성화
         document.getElementById('splash').classList.add('gone');
         document.getElementById('scanning-overlay').style.display = 'block';
         document.getElementById('ar-ui').classList.add('on');
         document.getElementById('crosshair').classList.add('show', 'pulse');
         
-        setStatus('🔍 Hiro 마커를 찾아 카메라 화면 중앙에 비춰주세요');
+        setStatus('📡 책상 바닥을 향하고 화면을 탭하여 고정하세요');
 
-        // 2단계: 동적으로 A-Frame + AR.js 씬 생성 및 인젝션
-        const sceneEl = document.createElement('a-scene');
-        sceneEl.setAttribute('embedded', '');
-        sceneEl.setAttribute('arjs', 'sourceType: webcam; debugUIEnabled: false; trackingMethod: best;');
-        sceneEl.setAttribute('vr-mode-ui', 'enabled: false');
-        sceneEl.setAttribute('style', 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; opacity: 0.001;');
-        
-        const markerEl = document.createElement('a-marker');
-        markerEl.setAttribute('preset', 'hiro');
-        markerEl.setAttribute('id', 'ar-marker');
-        
-        const anchorEl = document.createElement('a-entity');
-        anchorEl.setAttribute('id', 'ar-anchor-point');
-        
-        const cameraEl = document.createElement('a-entity');
-        cameraEl.setAttribute('camera', '');
-        
-        markerEl.appendChild(anchorEl);
-        sceneEl.appendChild(markerEl);
-        sceneEl.appendChild(cameraEl);
-        
-        document.body.appendChild(sceneEl);
+        // 첫 탭/클릭으로 도시 투사 시작 바인딩
+        const triggerAnchor = (e) => {
+          // UI 조작 패널이나 종료 버튼을 탭한 경우 버블링 차단
+          if (e.target.closest('#btn-exit') || e.target.closest('#dashboard')) return;
 
-        // 💡 [모바일 자동재생 세이프가드] 
-        // 모바일 브라우저 정책으로 인해 비디오가 로드된 후 플레이되지 않고 일시정지 상태에 잠기는 것을 방지합니다.
-        window.arPlaySafeguardInterval = setInterval(() => {
-          const videos = document.querySelectorAll('video');
-          videos.forEach(v => {
-            if (v.paused) {
-              v.setAttribute('playsinline', 'true');
-              v.setAttribute('webkit-playsinline', 'true');
-              v.muted = true;
-              v.play().catch(e => console.log("Safeguard play failed:", e));
-            }
-          });
-        }, 200);
-
-        // 마커 감지(markerFound) 및 손실(markerLost) 리스너 와이어링
-        markerEl.addEventListener('markerFound', () => {
-          console.log("Marker Found!");
-          markerVisible = true;
-          
-          // 스캐너 HUD 숨기기
           document.getElementById('scanning-overlay').style.display = 'none';
           document.getElementById('crosshair').classList.remove('pulse', 'show');
+          cityStage.classList.add('show');
           
-          const cityStage = document.getElementById('city-stage');
-          if (cityStage) {
-            cityStage.classList.add('show');
-            cityStage.style.opacity = '1';
-          }
+          // 도시 초기화 배치
+          panX = 0; panY = 0;
+          updateStageTransform();
+          
+          analyzeDeskEnvironment(); // 책상 환경 조도를 분석해 어울리는 테마 자동 적용
+          
+          // 이벤트 제거
+          window.removeEventListener('click', triggerAnchor);
+          window.removeEventListener('touchstart', triggerAnchor);
+        };
 
-          // 마커 감지 후 조도/색조 분석 강제 호출 (환경 분석 대기 상태 해제)
-          analyzeDeskEnvironment();
-          
-          // 마커 최초 발견 시 3D 프린팅 자동 트리거!
-          if (!hasPrintedOnce) {
-            hasPrintedOnce = true;
-            start3DPrinting();
-          } else {
-            setStatus('🎯 공간 고정 완료! 도시가 마커 위에 고정되었습니다.');
-          }
-        });
-
-        markerEl.addEventListener('markerLost', () => {
-          console.log("Marker Lost!");
-          markerVisible = false;
-          setStatus('🔍 마커를 찾아 카메라로 비춰주세요 (자이로 고정 모드)');
-          
-          // 💡 마커 유실 시 더 이상 opacity = 0으로 도시를 숨기지 않습니다.
-          // 기기 각도를 다른 방향으로 돌리면, 자이로센서 수학 연산에 의해 3D 공간 상에서 
-          // 자연스럽게 화면 좌우/상하 바깥으로 밀려나가 물리적 피사체처럼 가려집니다.
-        });
+        // 클릭 즉시 스폰되는 것을 방지하기 위해 100ms 버블링 딜레이 후 리스너 등록
+        setTimeout(() => {
+          window.addEventListener('click', triggerAnchor);
+          window.addEventListener('touchstart', triggerAnchor);
+        }, 100);
 
       } catch (err) {
-        console.error("카메라 장치 연동 에러:", err);
+        console.error("카메라 연결 실패 상세 로그:", err);
         startBtn.textContent = '📷 AR 카메라 연결 시작';
         startBtn.disabled = false;
         
-        let errorMsg = '카메라 장치를 시작할 수 없습니다.';
+        // 상세 에러 진단 메시지 구성
+        let errorMsg = '카메라 장치 연동에 실패했습니다.';
+        let debugDetail = `에러명: ${err.name}\n메세지: ${err.message || '없음'}\n프로토콜: ${window.location.protocol}\nUserAgent: ${navigator.userAgent}`;
+        
         if (err.name === 'NotAllowedError') {
-          errorMsg = '카메라 사용 권한이 차단되었습니다. 주소창 왼쪽 자물쇠 버튼을 누르고 카메라 허용 설정을 활성화해주세요.';
+          errorMsg = '카메라 사용 권한이 거부되었습니다.\n\n[조치 방법]\n1. 브라우저 주소창 좌측의 설정 버튼(자물쇠 모양 등)을 누르고 카메라 허용을 활성화하세요.\n2. Windows 설정(개인 정보 -> 카메라) 또는 모바일 설정에서 브라우저의 카메라 앱 권한이 켜져 있는지 확인해 주세요.';
         } else if (err.name === 'NotReadableError') {
-          errorMsg = '카메라 장치가 다른 작업(화상회의 프로그램 등)에서 점유 중입니다.';
+          errorMsg = '카메라가 이미 다른 프로세스(예: Zoom, Teams, Discord, OBS, 또는 다른 브라우저 탭)에서 사용 중입니다.\n\n[조치 방법]\n카메라를 켜고 있는 다른 백그라운드 프로그램이나 웹 브라우저 탭을 완전히 종료한 뒤 다시 시도해 주세요.';
+        } else if (err.name === 'NotFoundError') {
+          errorMsg = '기기에 연결된 유효한 카메라 하드웨어(웹캠/카메라 모듈)를 찾을 수 없습니다.';
+        } else if (err.name === 'OverconstrainedError') {
+          errorMsg = '브라우저가 요구하는 카메라 사양을 기기 하드웨어가 지원하지 못합니다.';
+        } else if (err.message && err.message.includes('SecurityError')) {
+          errorMsg = '보안 제한으로 인해 카메라를 시작할 수 없습니다. 반드시 https:// 주소로 접속해 주세요.';
         }
-        alert(errorMsg);
-
-        // 시뮬레이션 모드 (데스크톱/자이로 미지원 모듈 대체) 제안
-        const goSim = confirm('카메라 기기 획득에 실패했습니다. 카메라 없이 가상 시뮬레이션 모드로 시작할까요?');
+        
+        alert(`${errorMsg}\n\n[디버그 진단 정보]\n${debugDetail}`);
+        
+        // 기기에 카메라가 없거나 완전히 실패한 경우 시뮬레이션 모드로 진입 제안
+        const goSim = confirm('카메라를 획득하지 못했습니다. 카메라 없이 가상 시뮬레이션 모드로 시작할까요?');
         if (goSim) {
-          isARModeActive = false;
-          markerVisible = false;
-          
           document.getElementById('splash').classList.add('gone');
           document.getElementById('ar-ui').classList.add('on');
-          
-          const cityStage = document.getElementById('city-stage');
-          if (cityStage) {
-            cityStage.classList.add('show');
-            cityStage.style.opacity = '1';
-          }
-          
+          cityStage.classList.add('show');
           panX = 0; panY = 0;
           updateStageTransform();
-          analyzeDeskEnvironment(); // 임시 분석 테마 스위치
+          analyzeDeskEnvironment(); // 카메라 오프라인 분석 (무작위)
         }
       }
     }
 
     function stopAR() {
-      // 1. 진행 중인 애니메이션 프레임 및 타이머 해제
+      // 애니메이션 클리어
       if (printAnimId) cancelAnimationFrame(printAnimId);
       if (wobbleAnimId) cancelAnimationFrame(wobbleAnimId);
-      if (window.arPlaySafeguardInterval) {
-        clearInterval(window.arPlaySafeguardInterval);
-      }
       
-      isARModeActive = false;
-      markerVisible = false;
+      // 카메라 스트림 정리
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        cameraStream = null;
+      }
+
       isPrinting = false;
       wobbleAnimId = null;
 
-      // 2. 동적으로 삽입한 A-Frame 씬 엘리먼트 제거
-      const scene = document.querySelector('a-scene');
-      if (scene) {
-        scene.parentNode.removeChild(scene);
-      }
-
-      // 3. AR.js가 백그라운드로 추가한 webcam 비디오 스트림 및 임시 캔버스 완전 정리
-      const arVideos = document.querySelectorAll('body > video:not(#cam-video)');
-      arVideos.forEach(v => {
-        if (v.srcObject) {
-          try {
-            v.srcObject.getTracks().forEach(track => track.stop());
-          } catch(e) { console.warn("웹캠 스트림 중지 에러:", e); }
-        }
-        v.parentNode.removeChild(v);
-      });
-
-      const arCanvases = document.querySelectorAll('.a-canvas, .arjs-loader');
-      arCanvases.forEach(el => el.parentNode.removeChild(el));
-
-      // AR 활성화 클래스 제거
-      document.body.classList.remove('ar-active');
-
-      // 4. HTML/Body 스타일 및 오버플로우 값 원래 상태로 원복
-      document.body.setAttribute('style', originalBodyStyle);
-      document.body.className = originalBodyClass;
-      document.documentElement.setAttribute('style', originalHtmlStyle);
-      document.documentElement.className = originalHtmlClass;
-
-      // 5. CSS/UI 요소 초기 설정 상태 리셋
+      // UI 초기화
       document.body.classList.remove('night-mode');
       
       const btnNight = document.getElementById('btn-night');
@@ -2042,17 +1669,10 @@
       }
 
       const video = document.getElementById('cam-video');
-      if (video) {
-        video.style.display = 'none';
-        video.srcObject = null;
-      }
+      video.style.display = 'none';
+      video.srcObject = null;
 
-      const cityStage = document.getElementById('city-stage');
-      if (cityStage) {
-        cityStage.classList.remove('show');
-        cityStage.style.opacity = '0';
-      }
-      
+      cityStage.classList.remove('show');
       document.getElementById('ar-ui').classList.remove('on');
       document.getElementById('splash').classList.remove('gone');
 
