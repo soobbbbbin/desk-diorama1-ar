@@ -41,27 +41,29 @@
     }
 
     /* ══════════════════════════════
-       CSS 3D 디오라마 스테이지
+       CSS 3D 디오라마 스테이지 (전체 화면 뷰포트로 개편)
     ══════════════════════════════ */
     #city-stage {
       position: fixed;
-      bottom: 240px;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 380px; height: 380px;
+      inset: 0;
+      width: 100vw; height: 100vh;
       z-index: 5;
-      pointer-events: auto;
+      pointer-events: none; /* 디오라마 외부의 탭 인식 및 백그라운드 영상 상호작용 지원 */
       perspective: 1000px;
+      perspective-origin: 50% 50%;
       display: none;
-      transition: opacity 0.5s ease;
+      transition: opacity 0.4s ease;
     }
     #city-stage.show { display: block; }
 
     #city-grid {
-      width: 100%; height: 100%;
+      position: absolute;
+      left: 50%; top: 50%;
+      width: 380px; height: 380px;
+      margin-left: -190px; margin-top: -190px;
       transform-style: preserve-3d;
-      position: relative;
-      transform: rotateX(60deg) rotateZ(-20deg);
+      pointer-events: auto; /* 디오라마 및 건물 영역만 터치 가능 */
+      transform: translate3d(0, 0, -600px) rotateX(60deg) rotateZ(-20deg);
     }
 
     /* 디오라마 기단판 (Base Plate) */
@@ -1147,15 +1149,8 @@
 
     // 디오라마 위치 및 스테이지 자체 수평 회전(Roll) 업데이트
     function updateStageTransform() {
-      cityStage.style.left = `calc(50% + ${panX}px)`;
-      cityStage.style.bottom = `calc(240px - ${panY}px)`;
-      
-      // 스마트폰을 눕힐수록(beta 작음) 원근감 왜곡을 낮추고, 세울수록(beta 큼) 투영을 극대화
-      const dynamicPersp = Math.max(700, Math.min(1500, 1500 - (currentBeta * 8)));
-      cityStage.style.perspective = `${dynamicPersp}px`;
-      
       // 스마트폰의 수평 기울어짐(Roll, gamma)을 상쇄하기 위해 스테이지 전체를 역회전 (수평선 일치)
-      cityStage.style.transform = `translateX(-50%) rotate(${-currentGamma}deg)`;
+      cityStage.style.transform = `rotate(${-currentGamma}deg)`;
     }
 
     // 디오라마 3D 회전 업데이트 (Pitch, Yaw 보상 및 절대 스케일 유지)
@@ -1163,14 +1158,21 @@
       if (isAnchored && gyroActive) {
         const dAlpha = getAngleDiff(currentAlpha, anchorAlpha);
         
-        // 1. 디오라마 자체 Pitch는 스마트폰 beta와 정비례하여 수평 매칭 (눕히면 탑뷰, 세우면 사이드뷰)
-        const finalPitch = currentBeta;
+        // 3D 가상 카메라 뷰 투영 역산 상쇄 벡터 계산
+        const R = 600; // 가상 카메라 거리
+        const radBeta = currentBeta * Math.PI / 180;
+        const radAlpha = dAlpha * Math.PI / 180;
         
-        // 2. Yaw 회전: 스마트폰이 회전하면 디오라마는 반대로 회전하여 가상 방위 고정
-        const finalYaw = anchorYaw - dAlpha;
+        // 디렉션 및 각도에 따른 3D 이동 오프셋 계산 (카메라 회전에 따른 상대적 이동)
+        // Y: 폰을 세울수록(Beta 증가) 디오라마가 아래로 밀리므로 Y를 위쪽(-방향)으로 보정
+        // Z: 폰을 눕힐수록(Beta 감소) 디오라마가 카메라 밑으로 가므로 Z를 깊은 쪽(-방향)으로 보정
+        const targetY = -R * Math.sin(radBeta);
+        const targetZ = -R * Math.cos(radBeta);
         
-        // 3. 뎁스 스케일링: 내려다볼수록(beta가 작고 탑뷰일수록) 카메라에 다가온 것으로 판단해 크게 보이고, 세울수록 멀어져 작게 보이는 물리 원근감
-        // 기준 각도를 55도로 두고, 눕히면 커지고(최대 1.35배), 세우면 작아짐(최소 0.75배)
+        // X: 폰을 회전하면(dAlpha), 디오라마가 좌우로 이동
+        const targetX = R * Math.sin(radAlpha) * Math.cos(radBeta);
+        
+        // 뎁스 스케일링: 내려다볼수록(beta가 작고 탑뷰일수록) 카메라에 다가온 것으로 판단해 크게 보이고, 세울수록 멀어져 작게 보이는 물리 원근감
         let depthScaleFactor = 1.0;
         if (currentBeta < 55) {
           depthScaleFactor = 1.0 + (55 - currentBeta) * 0.008;
@@ -1179,12 +1181,22 @@
         }
         const finalScale = ABSOLUTE_SCALE * Math.max(0.7, Math.min(1.4, depthScaleFactor));
         
-        cityGrid.style.transform = `rotateX(${finalPitch}deg) rotateZ(${finalYaw}deg) scale3d(${finalScale}, ${finalScale}, ${finalScale})`;
+        cityGrid.style.transform = `
+          translate3d(${anchorTouchX + targetX}px, ${anchorTouchY + targetY}px, ${targetZ}px)
+          rotateX(${currentBeta}deg)
+          rotateZ(${anchorYaw - dAlpha}deg)
+          scale3d(${finalScale}, ${finalScale}, ${finalScale})
+        `;
       } else {
         // 일반 데스크탑 / 터치 드래그 보간 모드 (자이로 미활성 또는 터치 앵커링 이전)
         const finalPitch = pitch + (parallaxY * 12);
         const finalYaw = yaw + (parallaxX * 12);
-        cityGrid.style.transform = `rotateX(${finalPitch}deg) rotateZ(${finalYaw}deg) scale3d(${ABSOLUTE_SCALE}, ${ABSOLUTE_SCALE}, ${ABSOLUTE_SCALE})`;
+        cityGrid.style.transform = `
+          translate3d(${panX}px, ${panY}px, -450px)
+          rotateX(${finalPitch}deg)
+          rotateZ(${finalYaw}deg)
+          scale3d(${ABSOLUTE_SCALE}, ${ABSOLUTE_SCALE}, ${ABSOLUTE_SCALE})
+        `;
       }
     }
 
@@ -1234,7 +1246,7 @@
           panX += dx;
           panY += dy;
         }
-        updateStageTransform();
+        updateGridTransform();
       } else if (dragMode === 'orbit') {
         if (isAnchored && gyroActive) {
           anchorYaw += dx * 0.4; // 절대 고정 상태에서 로컬 방향만 회전시킴
@@ -1285,44 +1297,10 @@
       }
     };
 
-    // IMU 가속도 관성 기반 가상 Odometry 핸들러 (드리프트 자동 회귀 모델)
+    // IMU 가속도 관성 기반 가상 Odometry 핸들러 (센서 흔들림 및 드리프트 폭발을 가속하므로 미사용 처리)
     function handleMotion(e) {
-      if (!gyroActive || !isAnchored) return;
-      
-      const accel = e.acceleration || e.accelerationIncludingGravity;
-      if (!accel) return;
-
-      let ax = accel.x || 0;
-      let ay = accel.y || 0;
-      let az = accel.z || 0;
-
-      // 중력 가속도가 포함된 센서일 경우 보정 필터링
-      if (e.accelerationIncludingGravity) {
-        if (Math.abs(ax) < 0.3) ax = 0;
-        if (Math.abs(ay) < 0.3) ay = 0;
-        if (Math.abs(az) < 0.3) az = 0;
-      } else {
-        // 순수 가속도 데드존
-        if (Math.abs(ax) < 0.1) ax = 0;
-        if (Math.abs(ay) < 0.1) ay = 0;
-        if (Math.abs(az) < 0.1) az = 0;
-      }
-
-      // 기기의 가속도 물리량 변화를 가상 속도에 누적 (반대 방향 상쇄)
-      velX += ax * 0.15;
-      velY += (ay - az * 0.4) * 0.15;
-
-      // 지수 감쇄 마찰 저항
-      velX *= 0.85;
-      velY *= 0.85;
-
-      // 최종 관성 변위에 누적 상쇄 처리
-      inertialX -= velX * 3.2;
-      inertialY -= velY * 3.2;
-
-      // 복원력 (제자리 앵커 포인터로 서서히 끌어와 무한 드리프트 폭발 방지)
-      inertialX *= 0.94;
-      inertialY *= 0.94;
+      // ⚠️ 센서 노이즈가 기하급수적으로 누적되는 가속도계 이중적분(Pseudo-Odometry)은 
+      // 공간 튐 및 공중 부유 현상을 악화시키므로 전면 사용하지 않습니다.
     }
 
     // iOS 18 Safari 대응: 사용자 터치 이벤트의 동기식 최상위 콜스택에서 직접 기폭시키는 권한 활성화 함수
@@ -1403,25 +1381,6 @@
           const finalOpacity = opacityAlpha * opacityBeta;
           cityStage.style.opacity = finalOpacity;
           cityStage.style.pointerEvents = finalOpacity <= 0 ? 'none' : 'auto';
-
-          // 스마트폰 후면 카메라 화각(FOV) 추정값 (수평 60도, 수직 75도)
-          const FOV_X_RAD = 60 * Math.PI / 180;
-          const FOV_Y_RAD = 75 * Math.PI / 180;
-
-          const dAlphaRad = dAlpha * Math.PI / 180;
-          const dBetaRad = dBeta * Math.PI / 180;
-
-          // 탄젠트 역투영 삼각함수 공식을 활용해 디바이스 회전에 따른 뷰포트 내 가상 점 이동을 정확히 역산 상쇄
-          const offsetLimitX = window.innerWidth * 2;
-          const offsetLimitY = window.innerHeight * 2;
-          
-          const deltaX = (window.innerWidth * Math.tan(dAlphaRad)) / (2 * Math.tan(FOV_X_RAD / 2));
-          const deltaY = (window.innerHeight * Math.tan(dBetaRad)) / (2 * Math.tan(FOV_Y_RAD / 2));
-
-          // 폰을 돌리거나 숙일 때 디오라마가 실제 책상 위 앵커 포인트에 가만히 머물게 물리적 고정
-          // 자이로 회전 상쇄량에 더해, 가속도 관성 오프셋(inertialX, inertialY)을 융합하여 평행 이동까지 완벽 보상!
-          panX = anchorTouchX - Math.max(-offsetLimitX, Math.min(offsetLimitX, deltaX)) + inertialX;
-          panY = anchorTouchY + Math.max(-offsetLimitY, Math.min(offsetLimitY, deltaY)) + inertialY;
 
           updateStageTransform();
         } else {
@@ -1771,9 +1730,9 @@
           document.getElementById('crosshair').classList.remove('pulse', 'show');
           cityStage.classList.add('show');
           
-          // 터치한 위치를 가상 바닥 앵커 좌표로 변환
+          // 터치한 위치를 가상 바닥 앵커 좌표로 변환 (화면 중심을 원점으로 한 3D XY 평면 보정)
           anchorTouchX = clientX - (window.innerWidth / 2);
-          anchorTouchY = (window.innerHeight - 240) - clientY;
+          anchorTouchY = clientY - (window.innerHeight / 2);
           
           panX = anchorTouchX;
           panY = anchorTouchY;
