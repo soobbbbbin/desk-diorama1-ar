@@ -11,7 +11,7 @@ const ARTIFACT_DIR = `C:/Users/user/.gemini/antigravity-ide/brain/${CONVO_ID}`;
 
 // 1. Simple static file server
 const server = http.createServer((req, res) => {
-  let filePath = path.join(PUBLIC_DIR, req.url === '/' ? 'ar_index.html' : req.url);
+  let filePath = path.join(PUBLIC_DIR, req.url === '/' ? 'index.html' : req.url);
   
   fs.readFile(filePath, (err, content) => {
     if (err) {
