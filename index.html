@@ -2,14 +2,102 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
-  <title>Desk Diorama AR — Real Hybrid WebGL AR</title>
+  <title>Desk Diorama AR — Premium Hologram Simulator</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
-  
-  <!-- A-Frame and Orbit Controls for WebGL Rendering -->
-  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
-  <script src="https://unpkg.com/aframe-orbit-controls@1.3.2/dist/aframe-orbit-controls.min.js"></script>
+
+  <!-- 모바일 온스크린 디버그 콘솔 (실시간 오류 진단용) -->
+  <script>
+    (function() {
+      const consoleDiv = document.createElement('div');
+      consoleDiv.id = 'debug-log-console';
+      consoleDiv.style.cssText = 'position: fixed; bottom: 10px; left: 10px; right: 10px; height: 120px; background: rgba(0,0,0,0.85); color: #00ffcc; font-family: monospace; font-size: 10px; overflow-y: auto; z-index: 9999; border: 1px solid #00f0ff; border-radius: 6px; padding: 6px; pointer-events: auto; display: none;';
+      
+      const toggleBtn = document.createElement('button');
+      toggleBtn.textContent = '🛠️ 디버그 로그';
+      toggleBtn.style.cssText = 'position: fixed; bottom: 140px; right: 10px; z-index: 10000; padding: 6px 12px; background: #0f172a; border: 1px solid #00f0ff; color: #00f0ff; border-radius: 4px; font-size: 11px; font-weight: bold; cursor: pointer;';
+      toggleBtn.onclick = () => {
+        consoleDiv.style.display = consoleDiv.style.display === 'none' ? 'block' : 'none';
+      };
+      
+      document.addEventListener('DOMContentLoaded', () => {
+        document.body.appendChild(consoleDiv);
+        document.body.appendChild(toggleBtn);
+      });
+      
+      function logToScreen(type, args) {
+        const msg = Array.from(args).map(arg => {
+          if (typeof arg === 'object') {
+            try { return JSON.stringify(arg); } catch(e) { return arg.toString(); }
+          }
+          return arg;
+        }).join(' ');
+        
+        const logLine = document.createElement('div');
+        logLine.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
+        logLine.style.padding = '2px 0';
+        logLine.innerHTML = `[\${new Date().toLocaleTimeString()}] <span style="color:\${type === 'error' ? '#ff3366' : type === 'warn' ? '#ffcc00' : '#00ffcc'}">\${type.toUpperCase()}</span>: \${msg}`;
+        consoleDiv.appendChild(logLine);
+        consoleDiv.scrollTop = consoleDiv.scrollHeight;
+      }
+      
+      window.onerror = function(message, source, lineno, colno, error) {
+        logToScreen('error', [`\${message} at \${source}:\${lineno}:\${colno}`]);
+        return false;
+      };
+      
+      const origError = console.error;
+      console.error = function() {
+        logToScreen('error', arguments);
+        origError.apply(console, arguments);
+      };
+      
+      const origWarn = console.warn;
+      console.warn = function() {
+        logToScreen('warn', arguments);
+        origWarn.apply(console, arguments);
+      };
+    })();
+  </script>
+
+  <!-- A-Frame & AR.js CDN (jsDelivr 고속 CDN 로드로 네트워크 타임아웃 방지) -->
+  <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@master/aframe/build/aframe-ar.js"></script>
+
+  <!-- 엔진 로딩 가드 시스템 (덜 준비된 상태에서 클릭 시 발생하는 크래시 차단) -->
+  <script>
+    window.addEventListener('load', () => {
+      const startBtn = document.getElementById('btn-start');
+      if (startBtn) {
+        startBtn.disabled = true;
+        startBtn.textContent = "엔진 로딩 중 (A-Frame)...";
+      }
+      
+      let checkCount = 0;
+      const checkInterval = setInterval(() => {
+        checkCount++;
+        const isAFrameLoaded = typeof AFRAME !== 'undefined';
+        const isThreeLoaded = isAFrameLoaded && typeof AFRAME.THREE !== 'undefined';
+        
+        if (isAFrameLoaded && isThreeLoaded) {
+          clearInterval(checkInterval);
+          if (startBtn) {
+            startBtn.disabled = false;
+            startBtn.textContent = "📷 AR 카메라 연결 시작";
+          }
+          console.log("A-Frame & THREE.js loaded successfully!");
+        } else if (checkCount > 50) {
+          clearInterval(checkInterval);
+          if (startBtn) {
+            startBtn.disabled = false;
+            startBtn.textContent = "📷 AR 카메라 연결 시작 (로딩 지연)";
+          }
+          console.warn("A-Frame loading timeout.");
+        }
+      }, 200);
+    });
+  </script>
 
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -21,40 +109,275 @@
       font-family: 'Outfit', -apple-system, sans-serif;
       color: #f3f4f6;
       -webkit-tap-highlight-color: transparent;
+      touch-action: none;
       user-select: none;
     }
 
     /* ══════════════════════════════
-       카메라 비디오 배경 (iOS/Android 공통)
-       A-Frame 캔버스 뒤쪽에 배치
+       카메라 비디오 (전체 배경)
     ══════════════════════════════ */
     #cam-video {
       position: fixed;
       inset: 0;
       width: 100%; height: 100%;
       object-fit: cover;
-      z-index: 0; /* 배경 레이어 */
+      z-index: 1;
       display: none;
       transform: scaleX(-1); /* 전면 카메라 거울 반사 해결 */
+      transition: filter 0.5s ease;
     }
-    #cam-video.rear { transform: scaleX(1); } /* 후면 카메라는 원래대로 */
+    #cam-video.rear { transform: scaleX(1); } /* 후면 카메라는 거울 반사 해제 */
     
-    body.night-mode #cam-video {
-      filter: brightness(0.4) contrast(1.1) saturate(0.8);
+    body.night-mode video {
+      filter: brightness(0.35) contrast(1.1) saturate(0.8) sepia(0.1);
+    }
+
+    a-scene, .a-canvas {
+      pointer-events: none !important;
+    }
+
+    /* AR 활성화 시 배경 비디오 레이아웃 및 z-index 강제 고정 */
+    body.ar-active {
+      background: transparent !important;
+    }
+    body.ar-active video {
+      position: fixed !important;
+      top: 0 !important; left: 0 !important;
+      width: 100vw !important; height: 100vh !important;
+      object-fit: cover !important;
+      z-index: 1 !important;
     }
 
     /* ══════════════════════════════
-       투명 A-Frame 씬 설정
+       CSS 3D 디오라마 스테이지
     ══════════════════════════════ */
-    a-scene, .a-canvas {
-      background: transparent !important;
-      background-color: transparent !important;
+    #city-stage {
+      position: fixed;
+      inset: 0;
+      width: 100vw; height: 100vh;
+      z-index: 5;
+      pointer-events: none; /* 디오라마 외부의 탭 인식 및 백그라운드 영상 상호작용 지원 */
+      perspective: 1000px;
+      perspective-origin: 50% 50%;
+      display: none;
+      transition: opacity 0.4s ease;
     }
-    a-scene {
+    #city-stage.show { display: block; }
+
+    #city-grid {
+      width: 100%; height: 100%;
+      transform-style: preserve-3d;
+      position: relative;
+      transform: rotateX(60deg) rotateZ(-20deg);
+    }
+
+    /* 디오라마 기단판 (Base Plate) */
+    .diorama-base {
+      position: absolute;
+      width: 320px; height: 320px;
+      left: 30px; top: 30px;
+      background: rgba(8, 18, 38, 0.7);
+      border: 2px solid rgba(0, 212, 255, 0.4);
+      border-radius: 16px;
+      box-shadow: 0 0 30px rgba(0, 212, 255, 0.2), inset 0 0 20px rgba(0, 212, 255, 0.2);
+      transform: translateZ(-2px);
+      transform-style: preserve-3d;
+      backdrop-filter: blur(8px);
+      pointer-events: auto !important;
+    }
+
+    .diorama-base::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image: 
+        linear-gradient(rgba(0, 212, 255, 0.15) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 212, 255, 0.15) 1px, transparent 1px);
+      background-size: 20px 20px;
+      border-radius: 14px;
+    }
+
+    /* 빌딩 루트 3D 렌더링 컨텍스트 유지 */
+    #buildings-root {
+      position: absolute;
+      inset: 0;
+      transform-style: preserve-3d;
+      pointer-events: none;
+    }
+
+    /* 3D 건물 스타일 */
+    .building {
+      position: absolute;
+      transform-style: preserve-3d;
+      /* 기본적으로 세로로 서 있게 하기 위해 rotateX(-90deg) 적용 */
+      transform: rotateX(-90deg) scaleY(0.001);
+      transition: transform 0.05s linear;
+      pointer-events: auto !important;
+      cursor: pointer;
+    }
+
+    .b-face {
       position: absolute;
       top: 0; left: 0;
-      width: 100%; height: 100%;
-      z-index: 2; /* 비디오 위에 3D 렌더링 */
+      backface-visibility: visible; /* 뒷면 컬링 해제하여 3D 면의 투명화 원천 방지 */
+      transform-style: preserve-3d;
+      transition: background 0.4s, border 0.4s, box-shadow 0.4s;
+    }
+
+    /* 건물 앞면/뒷면 공통 */
+    .b-face.front, .b-face.back {
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    /* 건물 좌측/우측 공통 */
+    .b-face.left, .b-face.right {
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    /* 창문 그리드 오버레이 클래스 */
+    .window-layer {
+      position: absolute;
+      inset: 0;
+      background-size: 8px 10px;
+      opacity: 0.85;
+      transition: opacity 0.5s;
+    }
+
+    /* ══════════════════════════════
+       아키타입 테마 정의 (Vibrant & Premium)
+    ══════════════════════════════ */
+
+    /* 1. Chaos Neon District (Cyberpunk) */
+    .theme-chaos-neon .diorama-base {
+      border-color: rgba(255, 0, 127, 0.6);
+      box-shadow: 0 0 30px rgba(255, 0, 127, 0.25), inset 0 0 20px rgba(255, 0, 127, 0.2);
+    }
+    .theme-chaos-neon .b-face.front, .theme-chaos-neon .b-face.back {
+      background: #110d1d;
+    }
+    .theme-chaos-neon .b-face.left, .theme-chaos-neon .b-face.right {
+      background: #090610;
+    }
+    .theme-chaos-neon .window-layer {
+      background-image: 
+        linear-gradient(rgba(255, 0, 127, 0.65) 1.5px, transparent 1.5px),
+        linear-gradient(90deg, rgba(0, 240, 255, 0.65) 1.5px, transparent 1.5px);
+    }
+    .theme-chaos-neon .b-face.top {
+      background: #ff007f;
+      box-shadow: 0 0 15px #ff007f;
+    }
+    .theme-chaos-neon .antenna {
+      background: #00ffff;
+      box-shadow: 0 0 8px #00ffff;
+    }
+
+    /* 2. Minimal Harmony City (Nordic Calm) */
+    .theme-minimal-harmony .diorama-base {
+      border-color: rgba(142, 194, 156, 0.6);
+      box-shadow: 0 0 30px rgba(142, 194, 156, 0.25), inset 0 0 20px rgba(142, 194, 156, 0.2);
+    }
+    .theme-minimal-harmony .b-face.front, .theme-minimal-harmony .b-face.back {
+      background: #f3f4f6;
+    }
+    .theme-minimal-harmony .b-face.left, .theme-minimal-harmony .b-face.right {
+      background: #e5e7eb;
+    }
+    .theme-minimal-harmony .window-layer {
+      background-image: 
+        linear-gradient(rgba(245, 158, 11, 0.4) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.8) 1px, transparent 1px);
+    }
+    .theme-minimal-harmony .b-face.top {
+      background: #54a065;
+      box-shadow: inset 0 0 8px rgba(0,0,0,0.15);
+    }
+    .theme-minimal-harmony .antenna {
+      background: #9ca3af;
+    }
+
+    /* 3. Dynamic Flow City (Futuristic Metallic) */
+    .theme-dynamic-flow .diorama-base {
+      border-color: rgba(0, 120, 255, 0.6);
+      box-shadow: 0 0 30px rgba(0, 120, 255, 0.25), inset 0 0 20px rgba(0, 120, 255, 0.2);
+    }
+    .theme-dynamic-flow .b-face.front, .theme-dynamic-flow .b-face.back {
+      background: #1e293b;
+    }
+    .theme-dynamic-flow .b-face.left, .theme-dynamic-flow .b-face.right {
+      background: #0f172a;
+    }
+    .theme-dynamic-flow .window-layer {
+      background-image: 
+        linear-gradient(rgba(0, 120, 255, 0.5) 1.5px, transparent 1.5px),
+        linear-gradient(90deg, rgba(0, 212, 255, 0.5) 1.5px, transparent 1.5px);
+    }
+    .theme-dynamic-flow .b-face.top {
+      background: #00d4ff;
+      box-shadow: 0 0 18px rgba(0, 212, 255, 0.8);
+    }
+    .theme-dynamic-flow .antenna {
+      background: #007cff;
+      box-shadow: 0 0 10px #007cff;
+    }
+
+    /* 4. Silent Ruins City (Post-Apocalyptic Amber) */
+    .theme-silent-ruins .diorama-base {
+      border-color: rgba(180, 100, 40, 0.5);
+      box-shadow: 0 0 30px rgba(180, 100, 40, 0.2), inset 0 0 20px rgba(180, 100, 40, 0.15);
+    }
+    .theme-silent-ruins .b-face.front, .theme-silent-ruins .b-face.back {
+      background: #2b2520;
+    }
+    .theme-silent-ruins .b-face.left, .theme-silent-ruins .b-face.right {
+      background: #1e1915;
+    }
+    .theme-silent-ruins .window-layer {
+      background-image: 
+        linear-gradient(rgba(249, 115, 22, 0.3) 1.5px, transparent 1.5px),
+        linear-gradient(90deg, rgba(168, 85, 247, 0.15) 1.5px, transparent 1.5px);
+    }
+    .theme-silent-ruins .b-face.top {
+      background: #4a473d;
+      box-shadow: inset 0 0 8px rgba(0,0,0,0.4);
+    }
+    .theme-silent-ruins .antenna {
+      background: #6b7280;
+    }
+
+    /* 밤 모드일 때 창문 발광 극대화 */
+    body.night-mode .theme-chaos-neon .window-layer {
+      filter: drop-shadow(0 0 3px #ff007f) drop-shadow(0 0 5px #00ffff);
+      opacity: 1;
+    }
+    body.night-mode .theme-minimal-harmony .window-layer {
+      filter: drop-shadow(0 0 2px #f59e0b);
+      opacity: 0.95;
+    }
+    body.night-mode .theme-dynamic-flow .window-layer {
+      filter: drop-shadow(0 0 4px #00d4ff);
+      opacity: 1;
+    }
+    body.night-mode .theme-silent-ruins .window-layer {
+      filter: drop-shadow(0 0 2px #f97316);
+      opacity: 0.7;
+    }
+
+    /* 3D 프린팅 중일 때 지붕이 레이저 효과로 발광 */
+    .building.printing .b-face.top {
+      background: #00f0ff !important;
+      box-shadow: 0 0 25px #00f0ff, 0 0 50px #00f0ff !important;
+    }
+
+    /* 그림자 */
+    .city-shadow {
+      position: absolute;
+      bottom: -10px; left: 50%;
+      transform: translateX(-50%);
+      width: 340px; height: 340px;
+      background: radial-gradient(ellipse, rgba(0,0,0,0.5) 0%, transparent 70%);
+      border-radius: 50%;
+      pointer-events: none;
     }
 
     /* ══════════════════════════════
@@ -130,6 +453,7 @@
     }
     .btn-premium:active { transform: scale(0.96); }
 
+    /* 카카오톡 등 인앱 브라우저 경고 배너 */
     #inapp-warning {
       display: none;
       background: rgba(239, 68, 68, 0.2);
@@ -195,6 +519,7 @@
     }
     #crosshair.pulse { animation: scanner-pulse 1.5s ease-in-out infinite; }
 
+    /* 스캔 HUD 그리드 연출 */
     #scanning-overlay {
       position: fixed;
       inset: 0;
@@ -274,6 +599,7 @@
       font-weight: 700;
     }
     
+    /* 아키타입별 액티브 컬러 */
     .arch-btn.active.chaos {
       background: rgba(255, 0, 127, 0.2);
       border-color: #ff007f;
@@ -332,6 +658,7 @@
     }
     input[type=range]::-webkit-slider-thumb:active { transform: scale(1.3); }
 
+    /* 토글 스위치 */
     .toggle-row {
       display: flex;
       gap: 10px;
@@ -373,6 +700,7 @@
       transition: width 0.05s linear;
     }
 
+    /* 상호작용 제안 가이드 캡션 */
     #interaction-tip {
       font-size: 11px; color: #4b5563;
       text-align: center;
@@ -391,85 +719,59 @@
       transition: all 0.3s;
     }
     .btn-exit-panel:hover { background: rgba(239, 68, 68, 0.15); }
+
+    /* ══════════════════════════════
+       디오라마 내부 3D 비 효과
+    ══════════════════════════════ */
+    #rain-grid-container {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      transform-style: preserve-3d;
+    }
+    .rain-drop-3d {
+      position: absolute;
+      width: 1px; height: 35px;
+      background: linear-gradient(transparent, rgba(0, 240, 255, 0.65));
+      transform-origin: bottom center;
+      transform-style: preserve-3d;
+      transform: rotateX(-90deg) translate3d(0, -180px, 0); /* 초기 수직 정렬 및 대기 상태 공중 배치 */
+      opacity: 0; /* 애니메이션 딜레이 동안 가로선 깜빡임 방지용 숨김 처리 */
+      animation: rain-fall-3d 0.8s linear infinite;
+    }
+    @keyframes rain-fall-3d {
+      0% { transform: rotateX(-90deg) translate3d(0, -180px, 0); opacity: 0; }
+      15% { opacity: 1; }
+      85% { opacity: 1; }
+      100% { transform: rotateX(-90deg) translate3d(0, 0, 0); opacity: 0; }
+    }
   </style>
 </head>
 <body>
 
-  <!-- 카메라 비디오 백그라운드 -->
+  <!-- 카메라 영상 배경 -->
   <video id="cam-video" autoplay playsinline muted></video>
 
-  <!-- ══════════════════════════════
-     A-Frame 3D Scene (Transparent WebGL Overlay)
-  ══════════════════════════════ -->
-  <a-scene 
-    background="transparent: true"
-    webxr="allowedModes: ar; referenceSpaceType: local-floor; requiredFeatures: hit-test;"
-    ar-hit-test-custom="target: #diorama-root; reticle: #scan-reticle;"
-    renderer="alpha: true; colorManagement: true; antialias: true;"
-    vr-mode-ui="enabled: false"
-    embedded
-    style="background: transparent;">
-    
-    <!-- Lights -->
-    <a-light id="ambient-light" type="ambient" intensity="0.6" color="#ffffff"></a-light>
-    <a-light id="dir-light" type="directional" intensity="1.2" position="2 4 3" castShadow="true"></a-light>
+  <!-- 스캔 라인 효과 -->
+  <div id="scanning-overlay"></div>
 
-    <!-- Camera (Drag / Orbit view helper for Desktop mode) -->
-    <a-entity id="camera-wrapper" position="0 0.25 0.35">
-      <a-entity 
-        id="main-camera"
-        camera 
-        look-controls="enabled: true"
-        orbit-controls="target: 0 0.05 0; minDistance: 0.15; maxDistance: 1.5; enableDamping: true; dampingFactor: 0.05;">
-      </a-entity>
-    </a-entity>
-
-    <!-- Input Raycaster for click / hover events in A-Frame -->
-    <a-entity cursor="rayOrigin: mouse" raycaster="objects: a-box, a-entity;"></a-entity>
-
-    <!-- Diorama Root -->
-    <a-entity id="diorama-root" position="0 0 0" visible="false">
+  <!-- 3D 건물 디오라마 -->
+  <div id="city-stage">
+    <div class="city-shadow"></div>
+    <div id="city-grid">
+      <!-- 디오라마 판넬 -->
+      <div class="diorama-base"></div>
       
-      <!-- Base Plate -->
-      <a-box 
-        id="diorama-base"
-        position="0 -0.005 0" 
-        width="0.26" 
-        height="0.01" 
-        depth="0.26" 
-        color="#f2efe9" 
-        metalness="0.1" 
-        roughness="0.8"
-        class="interactive">
-      </a-box>
+      <!-- 빌딩들 (JavaScript로 자동 구성) -->
+      <div id="buildings-root" style="transform-style: preserve-3d;"></div>
+    </div>
+  </div>
 
-      <!-- Grid Buildings Container (Wobbles independently) -->
-      <a-entity id="buildings-container" position="0 0 0"></a-entity>
-      
-      <!-- Rain Container -->
-      <a-entity id="rain-container" position="0 0.3 0"></a-entity>
-
-    </a-entity>
-
-    <!-- Scanning Reticle in AR mode -->
-    <a-ring 
-      id="scan-reticle" 
-      rotation="-90 0 0" 
-      radius-inner="0.025" 
-      radius-outer="0.03" 
-      color="#00d2ff" 
-      visible="false">
-    </a-ring>
-
-  </a-scene>
-
-  <!-- ══════════════════════════════
-     HTML UI Overlay Elements
-  ══════════════════════════════ -->
+  <!-- AR UI 오버레이 -->
   <div id="ar-ui">
     <div id="status">📷 카메라 설정 중...</div>
 
-    <!-- HUD scanning circle -->
+    <!-- 스캔 조준점 -->
     <div id="crosshair">
       <svg viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
         <circle cx="30" cy="30" r="28" stroke="#00d4ff" stroke-width="1.5" stroke-dasharray="4 4"/>
@@ -481,329 +783,236 @@
       </svg>
     </div>
 
-    <div id="scanning-overlay"></div>
-
-    <!-- Dashboard -->
+    <!-- 유리 조작 대시보드 (자동 분석화 및 물리 터치 피드백에 맞게 경량화) -->
     <div id="dashboard" style="position: relative;">
+      <!-- ⚙️ 개발자 테스트 모드 토글 버튼 -->
       <button id="btn-dev-toggle" onclick="toggleDevPanel()" style="position: absolute; top: 18px; right: 18px; background: none; border: none; font-size: 16px; color: rgba(255,255,255,0.3); cursor: pointer; outline: none; transition: color 0.3s;" title="테스트 제어판 열기">⚙️</button>
 
       <div class="hud-title-container">
-        <div class="hud-archetype" id="hud-archetype-name">책상 조도 분석 대기 중...</div>
+        <div class="hud-archetype" id="hud-archetype-name">환경 분석 대기 중...</div>
         <div class="hud-stats" id="hud-city-stats">GRID: 5x5 | STANDBY</div>
       </div>
 
+      <!-- 빌드 프로세스 진행바 -->
       <div class="print-prog-bar" id="print-bar">
         <div class="print-prog-fill" id="print-fill"></div>
       </div>
 
-      <!-- Developer controls -->
+      <!-- 🛠️ 숨겨진 개발자 테스트 패널 (디폴트 숨김, 기획 수동 검증용) -->
       <div id="dev-panel" style="display: none; border-top: 1px solid rgba(255,255,255,0.08); margin-top: 14px; padding-top: 14px; animation: fadeIn 0.3s ease;">
         <div style="font-size: 11px; font-weight: bold; color: #00d4ff; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
           <span>🛠️ 개발자 테스트 제어판</span>
           <span style="font-size: 9px; color: #6b7280; font-weight: normal;">수동 강제 조작 활성화</span>
         </div>
         
-        <div class="archetype-selector">
+        <!-- 아키타입 수동 강제 스위칭 -->
+        <div class="archetype-selector" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 12px;">
           <button class="arch-btn active chaos" id="dev-arch-chaos" onclick="switchArchetype('chaos')">Chaos</button>
           <button class="arch-btn harmony" id="dev-arch-harmony" onclick="switchArchetype('harmony')">Minimal</button>
           <button class="arch-btn flow" id="dev-arch-flow" onclick="switchArchetype('flow')">Dynamic</button>
           <button class="arch-btn ruins" id="dev-arch-ruins" onclick="switchArchetype('ruins')">Ruins</button>
         </div>
 
-        <div class="controls-grid">
-          <div class="toggle-row" style="grid-column: span 2;">
-            <button class="toggle-btn" id="btn-night" onclick="toggleNightMode()">🌙 야간 조명</button>
+        <!-- 날씨 수동 토글 -->
+        <div class="controls-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+          <div class="toggle-row" style="display: flex; gap: 10px; grid-column: span 2;">
+            <button class="toggle-btn active" id="btn-night" onclick="toggleNightMode()">🌙 야간 조명</button>
             <button class="toggle-btn" id="btn-rain" onclick="toggleRainMode()">🌧️ 날씨: 비</button>
           </div>
         </div>
 
-        <div class="slider-group">
-          <div class="slider-title">어수선함 (Density) <span id="clutter-val">90%</span></div>
-          <input type="range" id="slider-clutter" min="10" max="100" value="90" oninput="onClutterSlider(this.value)">
+        <!-- 어수선함(밀도) 강제 수동 조작 -->
+        <div class="slider-group" style="display: flex; flex-direction: column; gap: 4px; margin-bottom: 4px;">
+          <div class="slider-title" style="font-size: 11px; color: #9ca3af; display: flex; justify-content: space-between;">어수선함 (Density) <span id="clutter-val" style="color: #f3f4f6; font-weight: 600;">70%</span></div>
+          <input type="range" id="slider-clutter" min="10" max="100" value="70" oninput="onClutterSlider(this.value)" style="width: 100%;">
         </div>
       </div>
 
       <div id="interaction-tip">
-        바닥/책상을 조준하고 화면을 터치하여 배치하세요.<br>배치 후 도시를 터치하면 젤리 물리 반응(Wobble)이 활성화됩니다.
+        팁: 디오라마를 드래그하여 책상에 정렬하고,<br>건물들을 터치해 충격에 반응하는 물리 진동 피드백을 가해보세요.
       </div>
 
       <button class="btn-exit-panel" onclick="stopAR()">✕ AR 종료 및 복귀</button>
     </div>
   </div>
 
-  <!-- Splash Screen -->
+  <!-- 스플래시 화면 -->
   <div id="splash">
     <div class="glow-circle">
       <div class="s-icon">🏙️</div>
     </div>
     <div class="s-title">Desk Diorama AR</div>
     
+    <!-- 카카오톡 등 인앱 경고 메세지 -->
     <div id="inapp-warning">
       ⚠️ <strong>인앱 브라우저 경고</strong><br>
-      현재 인앱 브라우저로 접속 중입니다.<br>
+      현재 카카오톡, 인스타, 라인 등의 인앱 브라우저로 접속 중입니다.<br>
       카메라 권한 정책으로 인해 화면이 안 뜰 수 있으니,<br>
       <strong>우측 상단 메뉴 -> 다른 브라우저(Safari, Chrome)로 열기</strong>를 권장합니다.
     </div>
 
-    <div class="s-sub">책상 위나 바닥 공간을 스캔하세요.<br>그 위에 실제 공간 정렬이 적용된 가상 도시를 배치합니다.</div>
+    <div class="s-sub">인쇄물이나 책상 위의 공간을 스캔하세요.<br>그 위에 가상 도시의 홀로그램을 투사합니다.</div>
     <button class="btn-premium" id="btn-start" onclick="startAR()">📷 AR 카메라 연결 시작</button>
   </div>
 
   <script>
+    // 상태 메세지 업데이트 헬퍼 함수 (최상단 정의 및 window 바인딩으로 ReferenceError 원천 방지)
     function setStatus(msg) {
       const statusEl = document.getElementById('status');
-      if (statusEl) statusEl.textContent = msg;
+      if (statusEl) {
+        statusEl.textContent = msg;
+      }
       console.log("[Status]:", msg);
     }
     window.setStatus = setStatus;
 
-    // Archetype Configurations (Scaled to meters for 3D diorama)
+    /* ════════════════════════════════════════════
+       3D 도시 레이아웃 & 아키타입 데이터 세팅
+    ════════════════════════════════════════════ */
+    const GRID_SIZE = 5;
+    const CELL_SIZE = 56;
+    const OFFSET_VAL = (GRID_SIZE - 1) * CELL_SIZE * 0.5;
+
+    // 아키타입별 고유 특성 정의
     const ARCHETYPES = {
       chaos: {
         name: "Chaos Neon District",
         bodyClass: "theme-chaos-neon",
-        heights: [0.035, 0.055, 0.080, 0.110, 0.045],
-        widths: [0.024, 0.028, 0.022, 0.026, 0.030],
+        heights: [35, 55, 80, 110, 45],
+        widths: [24, 28, 22, 26, 30],
         density: 0.90,
         desc: "GRID: 5x5 | NEON HIGH",
-        colors: { body: '#110d1d', roof: '#ff007f', glass: '#00ffff', ant: '#00ffff' }
+        colors: { roof: '#ff007f', ant: '#00ffff' }
       },
       harmony: {
         name: "Minimal Harmony City",
         bodyClass: "theme-minimal-harmony",
-        heights: [0.025, 0.038, 0.045, 0.030, 0.020],
-        widths: [0.032, 0.026, 0.028, 0.030, 0.034],
+        heights: [25, 38, 45, 30, 20],
+        widths: [32, 26, 28, 30, 34],
         density: 0.50,
         desc: "GRID: 5x5 | ECO CALM",
-        colors: { body: '#f3f4f6', roof: '#54a065', glass: '#f59e0b', ant: '#9ca3af' }
+        colors: { roof: '#54a065', ant: '#9ca3af' }
       },
       flow: {
         name: "Dynamic Flow City",
         bodyClass: "theme-dynamic-flow",
-        heights: [0.040, 0.065, 0.095, 0.120, 0.050],
-        widths: [0.026, 0.024, 0.028, 0.022, 0.030],
+        heights: [40, 65, 95, 120, 50],
+        widths: [26, 24, 28, 22, 30],
         density: 0.75,
         desc: "GRID: 5x5 | STEEL DYNAMIC",
-        colors: { body: '#1e293b', roof: '#00d4ff', glass: '#00d4ff', ant: '#007cff' }
+        colors: { roof: '#00d4ff', ant: '#007cff' }
       },
       ruins: {
         name: "Silent Ruins City",
         bodyClass: "theme-silent-ruins",
-        heights: [0.015, 0.025, 0.035, 0.020, 0.012],
-        widths: [0.034, 0.030, 0.032, 0.028, 0.036],
+        heights: [15, 25, 35, 20, 12],
+        widths: [34, 30, 32, 28, 36],
         density: 0.30,
         desc: "GRID: 5x5 | RUINS SILENT",
-        colors: { body: '#2b2520', roof: '#4a473d', glass: '#f97316', ant: '#6b7280' }
+        colors: { roof: '#4a473d', ant: '#6b7280' }
       }
     };
 
-    const GRID_SIZE = 5;
-    const SPACING = 0.045; // 4.5cm spacing
-    const CENTER_OFFSET = (GRID_SIZE - 1) * SPACING * 0.5;
-
     let activeArch = 'chaos';
-    let isPrinting = false;
-    let isNightMode = false;
-    let isRaining = false;
-    let clutterValue = 0.90; // 90%
     const spawnedBuildings = [];
+    const root = document.getElementById('buildings-root');
 
-    // Seed-based Pseudo-Randomness
-    let seed = 42;
-    function randomSeed() {
-      let x = Math.sin(seed++) * 10000;
-      return x - Math.floor(x);
+    // 색상 음영 보정 헬퍼
+    function shadeColor(hex, pct) {
+      if (!hex || hex[0] !== '#') return hex;
+      const n = parseInt(hex.slice(1), 16);
+      const r = Math.max(0, Math.min(255, (n>>16) + pct));
+      const g = Math.max(0, Math.min(255, ((n>>8)&0xff) + pct));
+      const b = Math.max(0, Math.min(255, (n&0xff) + pct));
+      return '#' + [r,g,b].map(x=>x.toString(16).padStart(2,'0')).join('');
     }
 
-    // ── Rebuild A-Frame City ───────────────────────────────────────────────
-    function rebuildCity(densityOverride = null) {
-      const container = document.getElementById('buildings-container');
-      container.innerHTML = '';
-      spawnedBuildings.length = 0;
-
-      const arch = ARCHETYPES[activeArch];
-      const density = densityOverride !== null ? densityOverride : arch.density;
-      
-      seed = 42; // Reset seed
-
-      for (let r = 0; r < GRID_SIZE; r++) {
-        for (let c = 0; c < GRID_SIZE; c++) {
-          if (randomSeed() > density) continue;
-
-          // Dimensions
-          const hIdx = Math.floor(randomSeed() * arch.heights.length);
-          const wIdx = Math.floor(randomSeed() * arch.widths.length);
-          
-          let h = arch.heights[hIdx];
-          let w = arch.widths[wIdx];
-          let d = w;
-
-          if (activeArch === 'ruins' && randomSeed() > 0.6) {
-            h = h * 0.4;
-          }
-
-          const px = c * SPACING - CENTER_OFFSET;
-          const pz = r * SPACING - CENTER_OFFSET;
-
-          // Building parent entity
-          const buildingEl = document.createElement('a-entity');
-          buildingEl.setAttribute('position', `${px} 0 ${pz}`);
-          buildingEl.setAttribute('scale', '1 0.001 1');
-          buildingEl.classList.add('building-model');
-
-          // Building main concrete body
-          const bodyEl = document.createElement('a-box');
-          bodyEl.setAttribute('width', w.toString());
-          bodyEl.setAttribute('depth', d.toString());
-          bodyEl.setAttribute('height', h.toString());
-          bodyEl.setAttribute('color', arch.colors.body);
-          bodyEl.setAttribute('roughness', '0.8');
-          bodyEl.setAttribute('metalness', '0.1');
-          bodyEl.setAttribute('position', `0 ${h / 2} 0`);
-          buildingEl.appendChild(bodyEl);
-
-          // Glass detail
-          const glassEl = document.createElement('a-box');
-          const gh = h * 0.45;
-          const gw = w * 0.75;
-          const gd = d * 0.75;
-          glassEl.setAttribute('width', gw.toString());
-          glassEl.setAttribute('depth', gd.toString());
-          glassEl.setAttribute('height', gh.toString());
-          glassEl.setAttribute('color', arch.colors.glass);
-          
-          if (isNightMode) {
-            glassEl.setAttribute('material', `transparent: true; opacity: 0.9; metalness: 0.9; roughness: 0.1; emissive: ${arch.colors.glass}; emissiveIntensity: 1.5;`);
-          } else {
-            glassEl.setAttribute('material', `transparent: true; opacity: 0.65; metalness: 0.8; roughness: 0.2;`);
-          }
-          glassEl.setAttribute('position', `0 ${h * 0.65} 0`);
-          buildingEl.appendChild(glassEl);
-
-          // Roof Cap
-          const roofEl = document.createElement('a-box');
-          roofEl.setAttribute('width', (w * 0.9).toString());
-          roofEl.setAttribute('depth', (d * 0.9).toString());
-          roofEl.setAttribute('height', '0.002');
-          roofEl.setAttribute('color', arch.colors.roof);
-          
-          if (isNightMode && activeArch === 'chaos') {
-            roofEl.setAttribute('material', `emissive: ${arch.colors.roof}; emissiveIntensity: 1.0;`);
-          }
-          roofEl.setAttribute('position', `0 ${h} 0`);
-          buildingEl.appendChild(roofEl);
-
-          // Antenna
-          if (h > 0.05 && randomSeed() > 0.4) {
-            const antEl = document.createElement('a-box');
-            const antH = 0.015 + randomSeed() * 0.015;
-            antEl.setAttribute('width', '0.0015');
-            antEl.setAttribute('depth', '0.0015');
-            antEl.setAttribute('height', antH.toString());
-            antEl.setAttribute('color', arch.colors.ant);
-            
-            if (isNightMode) {
-              antEl.setAttribute('material', `emissive: ${arch.colors.ant}; emissiveIntensity: 1.2;`);
-            }
-            antEl.setAttribute('position', `0 ${h + antH / 2} 0`);
-            buildingEl.appendChild(antEl);
-          }
-
-          container.appendChild(buildingEl);
-          spawnedBuildings.push({
-            element: buildingEl,
-            targetH: h,
-            x: px,
-            z: pz
-          });
-        }
+    // 인앱 브라우저 체크
+    function checkInAppBrowser() {
+      const ua = navigator.userAgent.toLowerCase();
+      if (ua.includes('kakaotalk') || ua.includes('line') || ua.includes('instagram') || ua.includes('fb') || ua.includes('messenger') || ua.includes('everytime')) {
+        document.getElementById('inapp-warning').style.display = 'block';
       }
     }
+    checkInAppBrowser();
 
-    // ── 3D Printing Grow Animation ────────────────────────────────────────
-    function start3DPrinting() {
-      if (isPrinting) return;
-      isPrinting = true;
-      
-      const printBar = document.getElementById('print-bar');
-      const printFill = document.getElementById('print-fill');
-      printBar.style.display = 'block';
-      printFill.style.width = '0%';
+    // 아키타입 변경 (HUD 연동 및 프린트 개시)
+    function switchArchetype(key) {
+      if (activeArch === key && spawnedBuildings.length > 0) return;
+      activeArch = key;
 
-      rebuildCity(clutterValue);
+      // 테마 클래스 교체
+      const stage = document.getElementById('city-stage');
+      if (stage) {
+        stage.className = 'show'; // Reset classes
+        stage.classList.add(ARCHETYPES[key].bodyClass);
+      }
 
-      let progress = 0;
-      const speed = 0.015; // grows in ~1.5s
+      // HUD 타이틀 및 정보 표시 갱신
+      const hudName = document.getElementById('hud-archetype-name');
+      if (hudName) hudName.textContent = ARCHETYPES[key].name;
+      const hudStats = document.getElementById('hud-city-stats');
+      if (hudStats) hudStats.textContent = ARCHETYPES[key].desc;
 
-      function step() {
-        progress = Math.min(1.0, progress + speed);
-        
-        printFill.style.width = (progress * 100) + '%';
-        
-        spawnedBuildings.forEach((b) => {
-          const delay = (Math.abs(b.x) + Math.abs(b.z)) / (SPACING * GRID_SIZE) * 0.4;
-          const scaleY = Math.max(0.001, Math.min(1.0, (progress - delay) / 0.6));
-          b.element.setAttribute('scale', `1 ${scaleY} 1`);
+      // 🛠️ 개발자 패널이 존재할 시 수동 탭 액티브 상태 업데이트
+      const devPanel = document.getElementById('dev-panel');
+      if (devPanel) {
+        document.querySelectorAll('#dev-panel .arch-btn').forEach(btn => {
+          btn.classList.remove('active', 'chaos', 'harmony', 'flow', 'ruins');
         });
-
-        if (progress < 1.0) {
-          requestAnimationFrame(step);
-        } else {
-          isPrinting = false;
-          printBar.style.display = 'none';
-          setStatus('🏙️ 디오라마 생성 완료! 건물을 터치하면 흔들립니다.');
-          
-          // DO NOT trigger wobble here anymore. Only trigger on user click!
+        const targetBtn = document.getElementById(`dev-arch-${key}`);
+        if (targetBtn) {
+          targetBtn.classList.add('active', key);
         }
       }
-      requestAnimationFrame(step);
+
+      // 3D 프린팅 트리거 빌드업
+      start3DPrinting();
     }
 
-    // ── Wobble Physics Simulation (Damped Sinewave) ───────────────────────
-    let wobbleTime = 0;
-    let wobbleStartTime = 0;
-    let wobbleAnimId = null;
-
-    function triggerWobble() {
-      if (isPrinting) return; // Prevent wobble during 3D printing/generation!
-      wobbleStartTime = Date.now();
-      if (wobbleAnimId === null) {
-        animateWobble();
-      }
-    }
-
-    function animateWobble() {
-      const now = Date.now();
-      const elapsed = now - wobbleStartTime;
-
-      if (elapsed >= 1200) {
-        const container = document.getElementById('buildings-container');
-        container.setAttribute('rotation', '0 0 0');
-        container.setAttribute('scale', '1 1 1');
-        wobbleAnimId = null;
-        return;
-      }
-
-      const intensity = 1.0 - (elapsed / 1200);
-      wobbleTime += 0.35;
-
-      const tiltX = Math.sin(wobbleTime) * 12 * intensity;  
-      const tiltZ = Math.cos(wobbleTime * 0.8) * 10 * intensity;
-      const squashY = 1.0 - (Math.abs(tiltX) * 0.004);
-
-      const container = document.getElementById('buildings-container');
-      container.setAttribute('rotation', `${tiltX} 0 ${tiltZ}`);
-      container.setAttribute('scale', `1 ${squashY} 1`);
-
-      wobbleAnimId = requestAnimationFrame(animateWobble);
-    }
-
-    // ── Camera Luminance / Color Temperature Analysis ─────────────────────
-    function analyzeDeskEnvironment() {
-      const video = document.getElementById('cam-video');
+    // 개발자 테스트 패널 토글 함수
+    function toggleDevPanel() {
+      const devPanel = document.getElementById('dev-panel');
+      const toggleBtn = document.getElementById('btn-dev-toggle');
+      if (!devPanel) return;
       
-      if (!video || video.style.display === 'none' || video.readyState !== 4) {
-        console.log("Camera feed not ready, using random theme");
+      if (devPanel.style.display === 'none') {
+        devPanel.style.display = 'block';
+        if (toggleBtn) {
+          toggleBtn.style.color = '#00d4ff';
+          toggleBtn.textContent = '✖️'; // 닫기 기호로 변경
+        }
+      } else {
+        devPanel.style.display = 'none';
+        if (toggleBtn) {
+          toggleBtn.style.color = 'rgba(255,255,255,0.3)';
+          toggleBtn.textContent = '⚙️';
+        }
+      }
+    }
+
+    // 개발자 모드용 어수선함(밀도) 슬라이더 조작
+    function onClutterSlider(val) {
+      const clutterVal = document.getElementById('clutter-val');
+      if (clutterVal) clutterVal.textContent = val + '%';
+      
+      if (!isPrinting) {
+        rebuildCity(val / 100);
+        // 스케일을 즉시 1로 고정 (세로 방향 유지)
+        spawnedBuildings.forEach(b => {
+          b.style.transform = 'rotateX(-90deg) scaleY(1)';
+        });
+      }
+    }
+
+    // 카메라 영상 조도/색조 분석을 통해 책상 환경에 어울리는 아키타입 테마 자동 매핑
+    function analyzeDeskEnvironment() {
+      // AR.js 비디오 또는 백업 비디오 획득
+      const video = document.querySelector('video:not(#cam-video)') || document.getElementById('cam-video');
+      
+      // 카메라 스트림이 꺼져 있거나 시뮬레이션 모드일 경우 예외 처리 (무작위)
+      if (!video || video.readyState !== 4) {
+        console.log("카메라 스트림 미준비로 랜덤 테마 적용");
         const themes = ['chaos', 'harmony', 'flow', 'ruins'];
         const randomTheme = themes[Math.floor(Math.random() * themes.length)];
         switchArchetype(randomTheme);
@@ -833,489 +1042,1028 @@
         const avgG = totalG / totalPixels;
         const avgB = totalB / totalPixels;
         
+        // 밝기 계산 (Luminance)
         const brightness = 0.299 * avgR + 0.587 * avgG + 0.114 * avgB;
         
-        let selectedTheme = 'chaos';
+        let selectedTheme = 'chaos'; // 기본 테마
         
         if (brightness > 140) {
-          selectedTheme = 'harmony'; // Bright desk -> Minimal Clean
+          // 매우 밝은 책상 환경 -> Nordic Calm (Harmony)
+          selectedTheme = 'harmony';
         } else if (brightness < 60) {
-          selectedTheme = 'ruins'; // Dark -> Ruins
+          // 어두컴컴한 환경 -> Post-Apocalyptic Amber (Ruins)
+          selectedTheme = 'ruins';
         } else if (avgB > avgR + 15 && avgB > avgG + 15) {
-          selectedTheme = 'flow'; // Blue/artificial tones -> Metallic
+          // 차가운 색조/인공광 책상 -> Futuristic Metallic (Flow)
+          selectedTheme = 'flow';
         } else {
-          selectedTheme = 'chaos'; // Default -> Cyberpunk Neon
+          // 일반 인공조명/중간 톤 -> Cyberpunk Neon (Chaos)
+          selectedTheme = 'chaos';
         }
         
-        console.log(`[Desk Analysis] Brightness: ${brightness.toFixed(1)}, RGB: (${avgR.toFixed(1)}, ${avgG.toFixed(1)}, ${avgB.toFixed(1)}) => Theme: ${selectedTheme}`);
+        console.log(`[환경 분석 결과] 밝기: ${brightness.toFixed(1)}, RGB: (${avgR.toFixed(1)}, ${avgG.toFixed(1)}, ${avgB.toFixed(1)}) => 테마: ${selectedTheme}`);
+        
         setStatus(`🔍 책상 분석 완료: ${ARCHETYPES[selectedTheme].name}`);
         switchArchetype(selectedTheme);
       } catch (err) {
-        console.error("Luminance analysis failed, switching to default chaos:", err);
+        console.error("카메라 조도 분석 실패, 기본 카오스 모드로 스위칭:", err);
         switchArchetype('chaos');
       }
     }
 
-    // ── Ambient / Weather controls ─────────────────────────────────────────
-    function toggleNightMode() {
-      const btn = document.getElementById('btn-night');
-      isNightMode = !isNightMode;
+    // 도시 빌딩 요소 동적 생성 (CSS 3D 5면체 직접 구성하여 플래트닝 전면 회피)
+    function rebuildCity(densityOverride = null) {
+      root.innerHTML = '';
+      spawnedBuildings.length = 0;
+
+      const arch = ARCHETYPES[activeArch];
+      const density = densityOverride !== null ? densityOverride : arch.density;
       
-      const ambient = document.getElementById('ambient-light');
-      const dir = document.getElementById('dir-light');
-
-      if (isNightMode) {
-        btn.classList.add('active');
-        btn.textContent = '🌙 야간 조명: ON';
-        document.body.classList.add('night-mode');
-        
-        ambient.setAttribute('color', '#1e1b4b');
-        ambient.setAttribute('intensity', '0.35');
-        
-        dir.setAttribute('color', '#ff007f');
-        dir.setAttribute('intensity', '0.45');
-      } else {
-        btn.classList.remove('active');
-        btn.textContent = '☀️ 주간 조명: ON';
-        document.body.classList.remove('night-mode');
-
-        ambient.setAttribute('color', '#ffffff');
-        ambient.setAttribute('intensity', '0.6');
-
-        dir.setAttribute('color', '#ffffff');
-        dir.setAttribute('intensity', '1.2');
+      // Seed 기반 랜덤 유사성 부여
+      let seed = 42;
+      function randomSeed() {
+        let x = Math.sin(seed++) * 10000;
+        return x - Math.floor(x);
       }
 
-      rebuildCity(clutterValue);
-      spawnedBuildings.forEach(b => b.element.setAttribute('scale', '1 1 1'));
-    }
-
-    function toggleRainMode(forcedState = null) {
-      const btn = document.getElementById('btn-rain');
-      isRaining = (forcedState !== null) ? forcedState : !isRaining;
-
-      const rainContainer = document.getElementById('rain-container');
-      rainContainer.innerHTML = '';
-
-      if (isRaining) {
-        btn.classList.add('active');
-        btn.textContent = '🌧️ 날씨: 비 (ON)';
-
-        for (let i = 0; i < 40; i++) {
-          const drop = document.createElement('a-cylinder');
-          drop.setAttribute('radius', '0.0005');
-          drop.setAttribute('height', '0.04');
-          drop.setAttribute('color', '#00d2ff');
-          drop.setAttribute('opacity', '0.5');
+      for (let r = 0; r < GRID_SIZE; r++) {
+        for (let c = 0; c < GRID_SIZE; c++) {
           
-          const rx = (Math.random() - 0.5) * 0.24;
-          const rz = (Math.random() - 0.5) * 0.24;
-          const ry = Math.random() * 0.2;
-          drop.setAttribute('position', `${rx} ${ry} ${rz}`);
+          if (randomSeed() > density) continue;
+
+          // 빌딩 사이즈 할당
+          const hIdx = Math.floor(randomSeed() * arch.heights.length);
+          const wIdx = Math.floor(randomSeed() * arch.widths.length);
           
-          rainContainer.appendChild(drop);
-        }
+          let h = arch.heights[hIdx];
+          let ww = arch.widths[wIdx];
+          let d = ww; // Depth = Width (정사각 기둥 구조)
 
-        if (!window.rainInterval) {
-          window.rainInterval = setInterval(() => {
-            const drops = rainContainer.querySelectorAll('a-cylinder');
-            drops.forEach(d => {
-              const pos = d.getAttribute('position');
-              let y = pos.y - 0.015;
-              if (y < -0.3) y = 0.2; 
-              d.setAttribute('position', `${pos.x} ${y} ${pos.z}`);
-            });
-          }, 30);
-        }
-      } else {
-        btn.classList.remove('active');
-        btn.textContent = '☀️ 날씨: 맑음';
-        if (window.rainInterval) {
-          clearInterval(window.rainInterval);
-          window.rainInterval = null;
-        }
-      }
-    }
-
-    function onClutterSlider(val) {
-      document.getElementById('clutter-val').textContent = val + '%';
-      clutterValue = val / 100;
-      if (!isPrinting) {
-        rebuildCity(clutterValue);
-        spawnedBuildings.forEach(b => b.element.setAttribute('scale', '1 1 1'));
-      }
-    }
-
-    function switchArchetype(key) {
-      if (activeArch === key && spawnedBuildings.length > 0) return;
-      activeArch = key;
-
-      document.getElementById('hud-archetype-name').textContent = ARCHETYPES[key].name;
-      document.getElementById('hud-city-stats').textContent = ARCHETYPES[key].desc;
-
-      document.querySelectorAll('#dev-panel .arch-btn').forEach(btn => {
-        btn.classList.remove('active', 'chaos', 'harmony', 'flow', 'ruins');
-      });
-      document.getElementById(`dev-arch-${key}`).classList.add('active', key);
-
-      start3DPrinting();
-    }
-
-    function toggleDevPanel() {
-      const panel = document.getElementById('dev-panel');
-      const btn = document.getElementById('btn-dev-toggle');
-      if (panel.style.display === 'none') {
-        panel.style.display = 'block';
-        btn.style.color = '#00d4ff';
-        btn.textContent = '✖️';
-      } else {
-        panel.style.display = 'none';
-        btn.style.color = 'rgba(255,255,255,0.3)';
-        btn.textContent = '⚙️';
-      }
-    }
-
-    // ── Custom A-Frame WebXR Plane Tracking Component ───────────────────────
-    AFRAME.registerComponent('ar-hit-test-custom', {
-      schema: {
-        target: { type: 'selector' },
-        reticle: { type: 'selector' }
-      },
-      init: function () {
-        this.xrHitTestSource = null;
-        this.viewerSpace = null;
-        this.placed = false;
-
-        this.el.sceneEl.addEventListener('enter-vr', () => {
-          if (this.el.sceneEl.is('ar-mode')) {
-            console.log("WebXR Immersive AR session active.");
-            
-            const camWrapper = document.getElementById('camera-wrapper');
-            if (camWrapper) camWrapper.setAttribute('position', '0 0 0');
-
-            document.getElementById('scanning-overlay').style.display = 'block';
-            document.getElementById('crosshair').classList.add('show', 'pulse');
-            setStatus('📡 책상 바닥을 스캔하여 배치할 표면을 선택하세요');
-
-            const session = this.el.sceneEl.renderer.xr.getSession();
-            
-            session.addEventListener('select', () => {
-              if (this.xrHitTestSource && !this.placed) {
-                this.placed = true;
-                
-                document.getElementById('scanning-overlay').style.display = 'none';
-                document.getElementById('crosshair').classList.remove('pulse', 'show');
-                this.data.reticle.setAttribute('visible', 'false');
-
-                // Get reticle pose and place the target (diorama)
-                const reticlePos = this.data.reticle.getAttribute('position');
-                this.data.target.setAttribute('position', reticlePos);
-                this.data.target.setAttribute('visible', 'true');
-
-                // Analyze feed and print
-                analyzeDeskEnvironment();
-              }
-            });
-
-            session.requestReferenceSpace('viewer').then((space) => {
-              this.viewerSpace = space;
-              session.requestHitTestSource({ space: this.viewerSpace }).then((source) => {
-                this.xrHitTestSource = source;
-              });
-            });
+          // Ruins 아키타입일 시 무작위로 일부 파손/낮춤 처리
+          if (activeArch === 'ruins' && randomSeed() > 0.6) {
+            h = Math.round(h * 0.4);
           }
-        });
 
-        this.el.sceneEl.addEventListener('exit-vr', () => {
-          this.placed = false;
-          this.data.reticle.setAttribute('visible', 'false');
-          document.getElementById('scanning-overlay').style.display = 'none';
-          document.getElementById('crosshair').classList.remove('pulse', 'show');
-          setStatus('Desktop Mode - Preview Active');
-        });
-      },
-      tick: function () {
-        const frame = this.el.sceneEl.frame;
-        if (!frame || !this.xrHitTestSource || this.placed) return;
+          const px = c * CELL_SIZE - OFFSET_VAL;
+          const pz = r * CELL_SIZE - OFFSET_VAL;
 
-        const referenceSpace = this.el.sceneEl.renderer.xr.getReferenceSpace();
-        const hitTestResults = frame.getHitTestResults(this.xrHitTestSource);
+          // 2. 빌딩 직접 생성 (wrapper 계층을 제거하여 브라우저의 3D stacking context 플래트닝 완전 방지)
+          const b = document.createElement('div');
+          b.className = 'building';
+          b.dataset.origH = h;
+          b.dataset.origW = ww;
+          b.dataset.origD = d;
+          b.style.cssText = `
+            position: absolute;
+            left: calc(50% + ${px}px);
+            top:  calc(50% + ${pz}px);
+            width: ${ww}px; height: ${h}px;
+            margin-left: -${ww/2}px;
+            margin-top: -${h}px;
+            transform-origin: bottom center;
+            transform: rotateX(-90deg) scaleY(0.001);
+          `;
 
-        if (hitTestResults.length > 0) {
-          const pose = hitTestResults[0].getPose(referenceSpace);
-          const pos = pose.transform.position;
-          
-          this.data.reticle.setAttribute('position', `${pos.x} ${pos.y} ${pos.z}`);
-          this.data.reticle.setAttribute('visible', 'true');
-          
-          // Do not make the target visible yet during scanning! Keep it hidden.
-          
-          setStatus('SURFACE FOUND! 화면을 탭하여 도시 배치');
-        } else {
-          setStatus('📡 책상 바닥 표면 스캔 중...');
-          this.data.reticle.setAttribute('visible', 'false');
+          // 3. 앞면 (Front Face) - translate3d로 명시적 깊이(Z) 부여
+          const front = document.createElement('div');
+          front.className = 'b-face front';
+          front.style.cssText = `
+            width: ${ww}px; height: ${h}px;
+            transform: translate3d(0, 0, ${d/2}px);
+          `;
+          const winFront = document.createElement('div');
+          winFront.className = 'window-layer';
+          front.appendChild(winFront);
+
+          // 4. 뒷면 (Back Face)
+          const back = document.createElement('div');
+          back.className = 'b-face back';
+          back.style.cssText = `
+            width: ${ww}px; height: ${h}px;
+            transform: rotateY(180deg) translate3d(0, 0, ${d/2}px);
+          `;
+          const winBack = document.createElement('div');
+          winBack.className = 'window-layer';
+          back.appendChild(winBack);
+
+          // 5. 좌측면 (Left Face)
+          const left = document.createElement('div');
+          left.className = 'b-face left';
+          left.style.cssText = `
+            width: ${d}px; height: ${h}px;
+            transform: rotateY(-90deg) translate3d(0, 0, ${ww/2}px);
+          `;
+          const winLeft = document.createElement('div');
+          winLeft.className = 'window-layer';
+          left.appendChild(winLeft);
+
+          // 6. 우측면 (Right Face)
+          const right = document.createElement('div');
+          right.className = 'b-face right';
+          right.style.cssText = `
+            width: ${d}px; height: ${h}px;
+            transform: rotateY(90deg) translate3d(0, 0, ${ww/2}px);
+          `;
+          const winRight = document.createElement('div');
+          winRight.className = 'window-layer';
+          right.appendChild(winRight);
+
+          // 7. 지붕 (Top Face) - rotateX(-90deg)를 적용해 보이는 면이 하늘을(위쪽) 보게 정렬
+          const top = document.createElement('div');
+          top.className = 'b-face top';
+          top.style.cssText = `
+            width: ${ww}px; height: ${d}px;
+            top: -${d/2}px;
+            transform: rotateX(-90deg);
+          `;
+
+          // 8. 안테나 (Antenna)
+          if (h > 50 && randomSeed() > 0.4) {
+            const ant = document.createElement('div');
+            ant.className = 'b-face antenna';
+            const antH = Math.round(10 + randomSeed() * 15);
+            ant.style.cssText = `
+              width: 2px; height: ${antH}px;
+              left: calc(50% - 1px);
+              top: -${antH}px;
+              transform: translate3d(0, 0, 0);
+            `;
+            b.appendChild(ant);
+          }
+
+          b.append(front, back, left, right, top);
+          b.style.pointerEvents = 'auto';
+          b.addEventListener('pointerdown', (e) => {
+            e.stopPropagation();
+            triggerWobble();
+          });
+          root.appendChild(b);
+          spawnedBuildings.push(b);
         }
+      }
+    }
+
+    // ════════════════════════════════════════════
+    // 인터랙션 (Pan, Orbit, Zoom) 제어 상태
+    // ════════════════════════════════════════════
+        // ════════════════════════════════════════════
+    // 인터랙션 (Pan, Orbit, Zoom) 제어 상태
+    // ════════════════════════════════════════════
+    let panX = 0, panY = 0;
+    let pitch = 55, yaw = -15;
+    let zoomScale = 0.9;
+
+    // AR.js 마커 추적 변수
+    let markerVisible = false;
+    const ABSOLUTE_SCALE = 0.72;
+
+    let isPointerDown = false;
+    let dragMode = 'orbit'; // 'orbit' = 카메라 회전, 'pan' = 도시 이동
+    let startPX = 0, startPY = 0;
+
+    // 패럴랙스 변수 (Desktop 마우스 움직임 반응)
+    let parallaxX = 0, parallaxY = 0;
+    let targetParallaxX = 0, targetParallaxY = 0;
+
+    const cityStage = document.getElementById('city-stage');
+    const cityGrid = document.getElementById('city-grid');
+
+    // AR 상태 관리 변수
+    let isARModeActive = false;
+    let hasPrintedOnce = false;
+
+    // 자이로/센서 상태 및 오리엔테이션 저장 객체
+    let currentOrientation = { alpha: 0, beta: 0, gamma: 0 };
+    let lastTrackedPosition = null;
+    let lastTrackedRotationMatrix = null;
+    let anchorOrientation = null;
+
+    // 자이로 센서 수신 리스너 등록
+    window.addEventListener('deviceorientation', (e) => {
+      if (e.alpha !== null) {
+        currentOrientation.alpha = e.alpha;
+        currentOrientation.beta = e.beta;
+        currentOrientation.gamma = e.gamma;
+      }
+    }, true);
+
+    // 자이로 각도 -> 쿼터니언 변환 헬퍼 (THREE.js 방식)
+    function getQuaternionFromOrientation(alpha, beta, gamma) {
+      const degToRad = Math.PI / 180;
+      // deviceorientation 각도는 Z-X'-Y'' (ZXY) 회전 구조이며 THREE.js의 YXZ 오더 매핑과 호환됩니다.
+      const euler = new THREE.Euler(
+        beta * degToRad,
+        alpha * degToRad,
+        -gamma * degToRad,
+        'YXZ'
+      );
+      return new THREE.Quaternion().setFromEuler(euler);
+    }
+
+    // 자이로 센서 권한 요청 (iOS 13+ 기기 대응용)
+    async function requestGyroPermission() {
+      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        try {
+          const permissionState = await DeviceOrientationEvent.requestPermission();
+          if (permissionState === 'granted') {
+            console.log("Gyroscope permission granted");
+          }
+        } catch (error) {
+          console.warn("DeviceOrientation permission request failed:", error);
+        }
+      }
+    }
+
+    // 디오라마 위치 및 스테이지 자체 수평 회전(Roll) 업데이트
+    function updateStageTransform() {
+      // AR.js의 카메라가 폰의 기울어짐(Roll)을 자체 해결하므로 수평 유지만 적용
+      if (!markerVisible) {
+        cityStage.style.transform = '';
+      }
+    }
+
+    // 디오라마 3D 회전 업데이트 (A-Frame / AR.js 매트릭스 동기화 및 데스크톱 폴백 지원)
+    function updateGridTransform() {
+      const THREE = window.THREE || (window.AFRAME && window.AFRAME.THREE);
+      
+      if (markerVisible) {
+        const scene = document.querySelector('a-scene');
+        if (scene && scene.camera) {
+          const camera = scene.camera; // THREE.Camera
+          const anchor = document.getElementById('ar-anchor-point');
+          
+          if (anchor && anchor.object3D && THREE) {
+            // THREE.js 객체 획득 및 MatrixWorld 갱신
+            const position = new THREE.Vector3();
+            anchor.object3D.updateMatrixWorld(true);
+            position.setFromMatrixPosition(anchor.object3D.matrixWorld);
+            
+            // 💡 월드 캐시 갱신 (자이로 연동용)
+            lastTrackedPosition = position.clone();
+            lastTrackedRotationMatrix = new THREE.Matrix4().extractRotation(anchor.object3D.matrixWorld);
+            anchorOrientation = { ...currentOrientation };
+
+            // 정규화 뷰포트 공간 (-1 ~ 1)로 가상 3D 좌표 투영
+            const tempV = position.clone();
+            tempV.project(camera);
+            
+            // 스크린 픽셀 좌표 변환
+            const screenX = (tempV.x * 0.5 + 0.5) * window.innerWidth;
+            const screenY = (-(tempV.y * 0.5) + 0.5) * window.innerHeight;
+            
+            // 카메라와 마커 간의 실제 물리 거리 측정
+            const cameraPosition = new THREE.Vector3();
+            cameraPosition.setFromMatrixPosition(camera.matrixWorld);
+            const distance = position.distanceTo(cameraPosition);
+            
+            // 마커의 회전 정보 오일러 앵글 추출
+            const rotation = new THREE.Euler();
+            rotation.setFromRotationMatrix(anchor.object3D.matrixWorld);
+            
+            const rotX = rotation.x * 180 / Math.PI;
+            const rotY = rotation.y * 180 / Math.PI;
+            const rotZ = rotation.z * 180 / Math.PI;
+            
+            // 거리 비례 다이나믹 스케일링 계산
+            const baseDistance = 4.0;
+            const distScale = Math.max(0.15, Math.min(2.5, baseDistance / distance));
+            const finalScale = ABSOLUTE_SCALE * distScale * zoomScale;
+            
+            // 스크린 중앙 대비 오프셋
+            const screenOffsetX = screenX - (window.innerWidth / 2) + panX;
+            const screenOffsetY = screenY - (window.innerHeight / 2) + panY;
+            
+            cityGrid.style.transform = `
+              translate3d(${screenOffsetX}px, ${screenOffsetY}px, ${-distance * 120}px)
+              rotateX(${90 + rotX}deg)
+              rotateY(${rotY}deg)
+              rotateZ(${rotZ + (yaw - (-15))}deg)
+              scale3d(${finalScale}, ${finalScale}, ${finalScale})
+            `;
+
+            const hudStats = document.getElementById('hud-city-stats');
+            if (hudStats) {
+              hudStats.textContent = `AR: TRACKED | DIST: ${distance.toFixed(2)} | SCALE: ${finalScale.toFixed(2)}`;
+            }
+          }
+        }
+      } else if (isARModeActive && lastTrackedPosition && anchorOrientation && THREE) {
+        // 💡 자이로 월드 고정 (Visual-Gyro Fusion): 마커 유실 시 기기 각도의 변화(Delta)만큼 3D 위치를 보정하여 제자리에 고정
+        const scene = document.querySelector('a-scene');
+        if (scene && scene.camera) {
+          const camera = scene.camera;
+          
+          const qCurrent = getQuaternionFromOrientation(currentOrientation.alpha, currentOrientation.beta, currentOrientation.gamma);
+          const qAnchor = getQuaternionFromOrientation(anchorOrientation.alpha, anchorOrientation.beta, anchorOrientation.gamma);
+          
+          // 회전 오프셋 구하기
+          const qDelta = qCurrent.clone().multiply(qAnchor.clone().invert());
+          const qInvert = qDelta.clone().invert();
+          
+          // 1. 카메라 기준 마커의 가상 상대 3D 좌표 (카메라가 회전하면 마커 벡터는 반대로 회전)
+          const virtualPosition = lastTrackedPosition.clone().applyQuaternion(qInvert);
+          
+          // 2. 가상 3D 회전 행렬 계산
+          const virtualRotationMatrix = new THREE.Matrix4().makeRotationFromQuaternion(qInvert).multiply(lastTrackedRotationMatrix);
+          const rotation = new THREE.Euler().setFromRotationMatrix(virtualRotationMatrix);
+          
+          // 3. 카메라 투영 행렬을 사용하여 스크린 좌표로 다이렉트 뷰포트 사상
+          const tempV = virtualPosition.clone();
+          tempV.applyMatrix4(camera.projectionMatrix);
+          
+          const screenX = (tempV.x * 0.5 + 0.5) * window.innerWidth;
+          const screenY = (-(tempV.y * 0.5) + 0.5) * window.innerHeight;
+          
+          const distance = virtualPosition.length();
+          
+          const rotX = rotation.x * 180 / Math.PI;
+          const rotY = rotation.y * 180 / Math.PI;
+          const rotZ = rotation.z * 180 / Math.PI;
+          
+          const baseDistance = 4.0;
+          const distScale = Math.max(0.15, Math.min(2.5, baseDistance / distance));
+          const finalScale = ABSOLUTE_SCALE * distScale * zoomScale;
+          
+          const screenOffsetX = screenX - (window.innerWidth / 2) + panX;
+          const screenOffsetY = screenY - (window.innerHeight / 2) + panY;
+          
+          cityGrid.style.transform = `
+            translate3d(${screenOffsetX}px, ${screenOffsetY}px, ${-distance * 120}px)
+            rotateX(${90 + rotX}deg)
+            rotateY(${rotY}deg)
+            rotateZ(${rotZ + (yaw - (-15))}deg)
+            scale3d(${finalScale}, ${finalScale}, ${finalScale})
+          `;
+
+          const hudStats = document.getElementById('hud-city-stats');
+          if (hudStats) {
+            hudStats.textContent = `AR: GYRO HOLD | DIST: ${distance.toFixed(2)} | SCALE: ${finalScale.toFixed(2)}`;
+          }
+        }
+      } else if (!isARModeActive) {
+        // 데스크톱 / 마커 유실 시 턴 15 고유의 오빗 및 휠 줌 작동
+        const finalPitch = pitch + (parallaxY * 12);
+        const finalYaw = yaw + (parallaxX * 12);
+        cityGrid.style.transform = `
+          translate3d(${panX}px, ${panY}px, -450px)
+          rotateX(${finalPitch}deg)
+          rotateZ(${finalYaw}deg)
+          scale3d(${zoomScale}, ${zoomScale}, ${zoomScale})`;
+
+        const hudStats = document.getElementById('hud-city-stats');
+        if (hudStats) {
+          hudStats.textContent = `AR: SEARCHING MARKER | DESKTOP MODE`;
+        }
+      }
+    }
+
+    // ════════════════════════════════════════════
+    // 마우스 및 터치 드래그/오빗/줌 제어 리스너
+    // ════════════════════════════════════════════
+    let isDragging = false;
+    let previousMousePosition = { x: 0, y: 0 };
+    let touchStartDist = 0;
+    let touchStartScale = 1;
+    let isMultiTouch = false;
+
+    // 공통 드래그 방지 필터 (대시보드 등 UI 터치 시 상호작용 차단)
+    function shouldIgnoreInteraction(target) {
+      return !!target.closest('#dashboard') || 
+             !!target.closest('#btn-start') || 
+             !!target.closest('#inapp-warning') || 
+             !!target.closest('#dev-panel') || 
+             !!target.closest('#btn-dev-toggle') ||
+             !!target.closest('#splash') ||
+             !!target.closest('#status');
+    }
+
+    // 모바일 터치 이벤트
+    window.addEventListener('touchstart', (e) => {
+      if (shouldIgnoreInteraction(e.target)) return;
+      
+      if (e.touches.length === 1) {
+        isDragging = true;
+        isMultiTouch = false;
+        previousMousePosition = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      } else if (e.touches.length === 2) {
+        isDragging = false;
+        isMultiTouch = true;
+        
+        // 핀치 줌
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        touchStartDist = Math.sqrt(dx*dx + dy*dy);
+        touchStartScale = zoomScale;
+        
+        // 두 손가락 중심점 계산
+        previousMousePosition = {
+          x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+          y: (e.touches[0].clientY + e.touches[1].clientY) / 2
+        };
       }
     });
 
-    // ── Real Web Camera Stream Lifecycle ──────────────────────────────────
-    let cameraStream = null;
+    window.addEventListener('touchmove', (e) => {
+      if (shouldIgnoreInteraction(e.target)) return;
+      
+      if (e.touches.length === 1 && isDragging) {
+        const deltaX = e.touches[0].clientX - previousMousePosition.x;
+        const deltaY = e.touches[0].clientY - previousMousePosition.y;
+        
+        yaw += deltaX * 0.45;
+        if (!markerVisible) {
+          pitch = Math.max(10, Math.min(85, pitch - deltaY * 0.45));
+        }
+        
+        previousMousePosition = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      } else if (e.touches.length === 2 && isMultiTouch) {
+        // 1. 핀치 줌
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (touchStartDist > 0) {
+          const factor = dist / touchStartDist;
+          zoomScale = Math.max(0.25, Math.min(3.0, touchStartScale * factor));
+        }
+        
+        // 2. 투핑거 드래그 팬(이동)
+        const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        const deltaX = midX - previousMousePosition.x;
+        const deltaY = midY - previousMousePosition.y;
+        
+        panX += deltaX;
+        panY += deltaY;
+        
+        previousMousePosition = { x: midX, y: midY };
+      }
+    });
 
-    async function startCamera() {
+    window.addEventListener('touchend', (e) => {
+      if (e.touches.length === 0) {
+        isDragging = false;
+        isMultiTouch = false;
+      } else if (e.touches.length === 1) {
+        isDragging = true;
+        isMultiTouch = false;
+        previousMousePosition = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      }
+    });
+
+    // 데스크톱 마우스 이벤트
+    window.addEventListener('mousedown', (e) => {
+      if (shouldIgnoreInteraction(e.target)) return;
+      isDragging = true;
+      previousMousePosition = { x: e.clientX, y: e.clientY };
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      
+      // 마우스 패럴랙스 타겟값 갱신 (드래그하지 않을 때 작동)
+      if (!isDragging) {
+        targetParallaxX = (e.clientX / window.innerWidth) * 2 - 1;
+        targetParallaxY = (e.clientY / window.innerHeight) * 2 - 1;
+        return;
+      }
+
+      const deltaX = e.clientX - previousMousePosition.x;
+      const deltaY = e.clientY - previousMousePosition.y;
+      
+      if (e.buttons === 1) { // 마우스 좌클릭: 회전
+        yaw += deltaX * 0.45;
+        if (!markerVisible) {
+          pitch = Math.max(10, Math.min(85, pitch - deltaY * 0.45));
+        }
+      } else if (e.buttons === 2) { // 마우스 우클릭: 이동
+        panX += deltaX;
+        panY += deltaY;
+      }
+      previousMousePosition = { x: e.clientX, y: e.clientY };
+    });
+
+    window.addEventListener('mouseup', () => { isDragging = false; });
+    window.addEventListener('contextmenu', (e) => {
+      if (!e.target.closest('#dashboard')) {
+        e.preventDefault();
+      }
+    });
+
+    // 마우스 휠 줌
+    window.addEventListener('wheel', (e) => {
+      if (e.target.closest('#dashboard')) return;
+      const factor = e.deltaY < 0 ? 1.05 : 0.95;
+      zoomScale = Math.max(0.25, Math.min(3.0, zoomScale * factor));
+    });
+
+    // 기존 자이로 스텁 호환용 선언
+    let gyroActive = false;
+    function startGyroscope() {
+      gyroActive = true;
+    }
+
+    // 60FPS 보간 렌더 루프
+    function renderLoop() {
+      parallaxX += (targetParallaxX - parallaxX) * 0.08;
+      parallaxY += (targetParallaxY - parallaxY) * 0.08;
+      
+      const cityStage = document.getElementById('city-stage');
+      if (cityStage && cityStage.classList.contains('show')) {
+        updateGridTransform();
+      }
+      requestAnimationFrame(renderLoop);
+    }
+    requestAnimationFrame(renderLoop);
+
+
+    /* ════════════════════════════════════════════
+       핵심 애니메이션 & 시각 효과 로직
+    ════════════════════════════════════════════ */
+    let printAnimId = null;
+    let isPrinting = false;
+
+    // 3D 프린팅 홀로그램 애니메이션 시작
+    function start3DPrinting() {
+      if (isPrinting) {
+        cancelAnimationFrame(printAnimId);
+      }
+      isPrinting = true;
+      
+      const printBar = document.getElementById('print-bar');
+      const printFill = document.getElementById('print-fill');
+      printBar.style.display = 'block';
+      printFill.style.width = '0%';
+
+      rebuildCity();
+
+      // 모든 건물을 프린팅 시작 모드로 셋팅 (세로로 서 있게 rotateX(-90deg) 필수)
+      spawnedBuildings.forEach(b => {
+        b.classList.add('printing');
+        b.style.transform = 'rotateX(-90deg) scaleY(0.001)';
+      });
+
+      let progress = 0;
+      const speed = 0.015; // 약 1.5초 소요
+
+      function step() {
+        progress = Math.min(1.0, progress + speed);
+        
+        // 진행률 UI 업데이트
+        printFill.style.width = (progress * 100) + '%';
+        
+        // 빌딩 높이 스케일링 (세로 방향 회전값 rotateX(-90deg) 유지하며 스케일링)
+        spawnedBuildings.forEach(b => {
+          b.style.transform = `rotateX(-90deg) scaleY(${progress})`;
+        });
+
+        if (progress < 1.0) {
+          printAnimId = requestAnimationFrame(step);
+        } else {
+          isPrinting = false;
+          printBar.style.display = 'none';
+          setStatus('🏙️ 디오라마 생성 완료! 드래그하여 배치하세요');
+          
+          // 프린팅 모드 해제
+          spawnedBuildings.forEach(b => {
+            b.classList.remove('printing');
+          });
+
+          // 모바일 자이로 센서 시작
+          startGyroscope();
+          
+          // 실시간 날씨 API 자동 연동 작동
+          autoFetchWeather();
+        }
+      }
+      printAnimId = requestAnimationFrame(step);
+    }
+
+    // ════════════════════════════════════════════
+    // 실시간 날씨 API 연동 (Open-Meteo 사용 - 완전 무료)
+    // ════════════════════════════════════════════
+    async function autoFetchWeather() {
+      setStatus('📡 실시간 위치 기반 날씨 정보 조회 중...');
+      if (!navigator.geolocation) {
+        console.warn("Geolocation을 지원하지 않는 브라우저입니다.");
+        setStatus('⚠️ 위치 측정 미지원 (맑음/낮 기본 설정)');
+        return;
+      }
+      
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          try {
+            const lat = position.coords.latitude;
+            const lon = position.coords.longitude;
+            const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=weather_code,is_day`);
+            const data = await res.json();
+            
+            if (data && data.current) {
+              const code = data.current.weather_code;
+              const isDay = data.current.is_day; // 1 = 낮, 0 = 밤
+              
+              // WMO 강우 코드 해석
+              // 51, 53, 55 (이슬비), 61, 63, 65 (비), 80, 81, 82 (소나기), 95, 96, 99 (뇌우)
+              const rainCodes = [51, 53, 55, 61, 63, 65, 80, 81, 82, 95, 96, 99];
+              const isRaining = rainCodes.includes(code);
+              
+              // 시간 모드 설정 반영
+              const btnNight = document.getElementById('btn-night');
+              if (isDay === 0) {
+                document.body.classList.add('night-mode');
+                btnNight.classList.add('active');
+                btnNight.textContent = '🌙 야간 조명: ON';
+              } else {
+                document.body.classList.remove('night-mode');
+                btnNight.classList.remove('active');
+                btnNight.textContent = '☀️ 주간 조명: ON';
+              }
+
+              // 비 모드 설정 반영
+              toggleRainMode(isRaining);
+
+              setStatus(`📡 날씨 연동 완료 (${isRaining ? '비' : '맑음'}, ${isDay ? '낮' : '밤'})`);
+            }
+          } catch (err) {
+            console.error("날씨 API 호출 실패:", err);
+            setStatus('⚠️ 날씨 API 조회 실패 (맑음/낮 기본 설정)');
+          }
+        },
+        (geoErr) => {
+          console.warn("위치 정보 획득 실패 (날씨 조회 건너뜀):", geoErr);
+          setStatus('⚠️ 위치 정보 없음 (맑음/낮 기본 설정)');
+        }
+      );
+    }
+
+    // ════════════════════════════════════════════
+    // 대시보드 컨트롤 패널 바인딩 이벤트
+    // ════════════════════════════════════════════
+
+    // 1. 건물 터치 충격 흔들림 피드백 구현 (1초 지수 감쇄 물리 적용)
+    let wobbleTime = 0;
+    let wobbleAnimId = null;
+    let wobbleStartTime = 0;
+
+    function triggerWobble() {
+      wobbleStartTime = Date.now();
+      if (wobbleAnimId === null) {
+        animateWobble();
+      }
+    }
+
+    // Wobble 삼각함수 흔들림 감쇄 애니메이션
+    function animateWobble() {
+      const now = Date.now();
+      const elapsed = now - wobbleStartTime;
+
+      // 1초(1000ms) 경과 시 세로로 정렬 후 완전히 정지
+      if (elapsed >= 1000) {
+        spawnedBuildings.forEach(b => {
+          b.style.transform = 'rotateX(-90deg) scaleY(1) rotateX(0deg) rotateZ(0deg)';
+        });
+        wobbleAnimId = null;
+        return;
+      }
+
+      // 시간 경과에 따라 1.0에서 0.0으로 정진동 진폭 감쇄 (강도)
+      const intensity = 1.0 - (elapsed / 1000);
+
+      wobbleTime += 0.35; // 빠른 댐핑 표현을 위해 주파수 상향
+
+      // 삼각함수 물리 변조 (터치 지점 중심 흔들림 모방)
+      const angleX = Math.sin(wobbleTime) * 25 * intensity;
+      const angleZ = Math.cos(wobbleTime * 0.75) * 20 * intensity;
+      const scaleSquash = 1.0 - (Math.abs(angleX) * 0.015);
+
+      spawnedBuildings.forEach(b => {
+        const origH = b.dataset.origH;
+        const factor = origH / 80; // 높은 빌딩이 관성으로 더 크게 움직임
+        b.style.transform = `rotateX(-90deg) scaleY(${scaleSquash}) rotateX(${angleX * factor}deg) rotateZ(${angleZ * factor}deg)`;
+      });
+
+      wobbleAnimId = requestAnimationFrame(animateWobble);
+    }
+
+    // 3. 야간 조명 토글 (수동 조작 비활성화로 가드 처리)
+    function toggleNightMode() {
+      const btn = document.getElementById('btn-night');
+      const body = document.body;
+      body.classList.toggle('night-mode');
+      
+      if (btn) {
+        if (body.classList.contains('night-mode')) {
+          btn.classList.add('active');
+          btn.textContent = '🌙 야간 조명: ON';
+        } else {
+          btn.classList.remove('active');
+          btn.textContent = '☀️ 주간 조명: ON';
+        }
+      }
+    }
+
+    // 4. 날씨 비 토글 (디오라마 내 3D 공간 비 구현, UI 가드 추가)
+    function toggleRainMode(forcedState = null) {
+      const btn = document.getElementById('btn-rain');
+      let enable = false;
+
+      if (forcedState !== null) {
+        enable = forcedState;
+      } else {
+        if (btn) {
+          btn.classList.toggle('active');
+          enable = btn.classList.contains('active');
+        }
+      }
+      
+      let rainGrid = document.getElementById('rain-grid-container');
+      if (!rainGrid) {
+        rainGrid = document.createElement('div');
+        rainGrid.id = 'rain-grid-container';
+        cityGrid.appendChild(rainGrid);
+      }
+      
+      rainGrid.innerHTML = '';
+      
+      if (enable) {
+        if (btn) {
+          btn.classList.add('active');
+          btn.textContent = '🌧️ 날씨: 비 (ON)';
+        }
+        
+        // 디오라마 기단 면적(320px x 320px) 내부 구역에만 비를 3D로 스폰
+        for (let i = 0; i < 45; i++) {
+          const drop = document.createElement('div');
+          drop.className = 'rain-drop-3d';
+          
+          // 기단 내부 여유 마진을 두고 X, Y 좌표 지정
+          const rx = 20 + Math.random() * 280;
+          const rz = 20 + Math.random() * 280;
+          drop.style.left = rx + 'px';
+          drop.style.top = rz + 'px';
+          
+          // 낙하 속도 및 딜레이 무작위 부여
+          drop.style.animationDelay = (Math.random() * 1.2) + 's';
+          drop.style.animationDuration = (0.55 + Math.random() * 0.35) + 's';
+          
+          rainGrid.appendChild(drop);
+        }
+      } else {
+        if (btn) {
+          btn.classList.remove('active');
+          btn.textContent = '☀️ 날씨: 맑음';
+        }
+      }
+    }
+
+
+    /* ════════════════════════════════════════════
+       AR 카메라 라이프사이클 관리
+    ════════════════════════════════════════════ */
+    let cameraStream = null;
+    let originalBodyStyle = '';
+    let originalBodyClass = '';
+    let originalHtmlStyle = '';
+    let originalHtmlClass = '';
+
+    async function startAR() {
+      // 💡 [iOS Safari 보안 정책 대응] 
+      // 비동기 딜레이가 발생하기 전에 사용자 인터랙션 동기적 컨텍스트에서 자이로 권한을 즉시 요청합니다.
+      await requestGyroPermission();
+
+      const startBtn = document.getElementById('btn-start');
+      startBtn.textContent = '카메라 권한 확인 중...';
+      startBtn.disabled = true;
+
+      // ⚠️ 이전 스트림이 열려 있다면 즉시 정지
       if (cameraStream) {
         try {
           cameraStream.getTracks().forEach(track => track.stop());
         } catch (e) {
-          console.warn("Error releasing previous stream:", e);
+          console.warn("이전 카메라 스트림 해제 실패:", e);
         }
         cameraStream = null;
       }
 
       try {
-        // Step 1: Attempt to acquire back camera (AR passthrough simulation)
-        try {
-          cameraStream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: { ideal: 'environment' } },
-            audio: false
+        // 보안 컨텍스트 체크 (HTTPS 필수)
+        if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+          throw new Error('SecurityError: 카메라 접근은 HTTPS 환경 또는 localhost에서만 허용됩니다. 현재 프로토콜: ' + window.location.protocol);
+        }
+
+        // AR 및 공간 트래킹 변수 셋팅
+        isARModeActive = true;
+        hasPrintedOnce = false;
+        markerVisible = false;
+        lastTrackedPosition = null;
+        lastTrackedRotationMatrix = null;
+        anchorOrientation = null;
+
+        // 원본 레이아웃 스타일 캐싱
+        originalBodyStyle = document.body.getAttribute('style') || '';
+        originalBodyClass = document.body.className || '';
+        originalHtmlStyle = document.documentElement.getAttribute('style') || '';
+        originalHtmlClass = document.documentElement.className || '';
+
+        // AR 활성화 클래스 추가하여 비디오 가시성 확보 및 body 배경 투명화
+        document.body.classList.add('ar-active');
+
+        // UI 모드 대기 상태 표시
+        document.getElementById('splash').classList.add('gone');
+        document.getElementById('scanning-overlay').style.display = 'block';
+        document.getElementById('ar-ui').classList.add('on');
+        document.getElementById('crosshair').classList.add('show', 'pulse');
+        
+        setStatus('🔍 Hiro 마커를 찾아 카메라 화면 중앙에 비춰주세요');
+
+        // 2단계: 동적으로 A-Frame + AR.js 씬 생성 및 인젝션
+        const sceneEl = document.createElement('a-scene');
+        sceneEl.setAttribute('embedded', '');
+        sceneEl.setAttribute('arjs', 'sourceType: webcam; debugUIEnabled: false; trackingMethod: best;');
+        sceneEl.setAttribute('vr-mode-ui', 'enabled: false');
+        sceneEl.setAttribute('style', 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; opacity: 0.001;');
+        
+        const markerEl = document.createElement('a-marker');
+        markerEl.setAttribute('preset', 'hiro');
+        markerEl.setAttribute('id', 'ar-marker');
+        
+        const anchorEl = document.createElement('a-entity');
+        anchorEl.setAttribute('id', 'ar-anchor-point');
+        
+        const cameraEl = document.createElement('a-entity');
+        cameraEl.setAttribute('camera', '');
+        
+        markerEl.appendChild(anchorEl);
+        sceneEl.appendChild(markerEl);
+        sceneEl.appendChild(cameraEl);
+        
+        document.body.appendChild(sceneEl);
+
+        // 💡 [모바일 자동재생 세이프가드] 
+        // 모바일 브라우저 정책으로 인해 비디오가 로드된 후 플레이되지 않고 일시정지 상태에 잠기는 것을 방지합니다.
+        window.arPlaySafeguardInterval = setInterval(() => {
+          const videos = document.querySelectorAll('video');
+          videos.forEach(v => {
+            if (v.paused) {
+              v.setAttribute('playsinline', 'true');
+              v.setAttribute('webkit-playsinline', 'true');
+              v.muted = true;
+              v.play().catch(e => console.log("Safeguard play failed:", e));
+            }
           });
-        } catch (err1) {
-          console.warn("Failed step 1 camera mode, trying generic:", err1);
-          await new Promise(resolve => setTimeout(resolve, 300));
+        }, 200);
+
+        // 마커 감지(markerFound) 및 손실(markerLost) 리스너 와이어링
+        markerEl.addEventListener('markerFound', () => {
+          console.log("Marker Found!");
+          markerVisible = true;
           
-          // Step 2: Fallback to any camera (Desktop webcams etc)
-          cameraStream = await navigator.mediaDevices.getUserMedia({
-            video: true,
-            audio: false
-          });
-        }
-
-        const video = document.getElementById('cam-video');
-        video.srcObject = cameraStream;
-
-        const track = cameraStream.getVideoTracks()[0];
-        const settings = track.getSettings();
-        if (settings && settings.facingMode === 'environment') {
-          video.classList.add('rear');
-        } else {
-          video.classList.remove('rear');
-        }
-
-        video.style.display = 'block';
-        try {
-          await video.play();
-        } catch (playErr) {
-          console.warn("Auto-play blocked, waiting for user gesture:", playErr);
-        }
-      } catch (err) {
-        console.error("Camera acquisition failed completely:", err);
-        setStatus("⚠️ 카메라 권한이 거부되었거나 지원되지 않습니다.");
-      }
-    }
-
-    function stopCamera() {
-      if (cameraStream) {
-        cameraStream.getTracks().forEach(track => track.stop());
-        cameraStream = null;
-      }
-      const video = document.getElementById('cam-video');
-      video.style.display = 'none';
-    }
-
-    // ── Start/Stop AR flow ───────────────────────────────────────────────
-    async function startAR() {
-      // 1. Request iOS Device Motion permission if available
-      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-        try {
-          const permissionState = await DeviceOrientationEvent.requestPermission();
-          if (permissionState === 'granted') {
-            console.log("DeviceOrientation sensor access granted.");
-          } else {
-            console.warn("DeviceOrientation sensor access denied.");
-            setStatus("⚠️ 센서 권한이 거부되어 방향 회전이 작동하지 않습니다.");
+          // 스캐너 HUD 숨기기
+          document.getElementById('scanning-overlay').style.display = 'none';
+          document.getElementById('crosshair').classList.remove('pulse', 'show');
+          
+          const cityStage = document.getElementById('city-stage');
+          if (cityStage) {
+            cityStage.classList.add('show');
+            cityStage.style.opacity = '1';
           }
-        } catch (error) {
-          console.error("Error requesting DeviceOrientation permission:", error);
-        }
-      }
 
-      // 2. Start the camera stream as background
-      await startCamera();
-
-      // Make body background transparent to see the camera stream behind it
-      document.body.style.background = 'transparent';
-
-      // Disable orbit controls in AR mode to let look-controls / WebXR control the camera
-      const cameraEl = document.getElementById('main-camera');
-      if (cameraEl) {
-        cameraEl.removeAttribute('orbit-controls');
-        cameraEl.setAttribute('look-controls', 'enabled: true; magicWindowTrackingEnabled: true;');
-      }
-
-      // 3. Hide intro, show dashboard
-      const splash = document.getElementById('splash');
-      splash.classList.add('gone');
-      setTimeout(() => {
-        if (splash.classList.contains('gone')) {
-          splash.style.display = 'none';
-        }
-      }, 600);
-
-      document.getElementById('ar-ui').classList.add('on');
-      
-      // 4. Keep diorama root hidden and clear container for 3D printing
-      const diorama = document.getElementById('diorama-root');
-      diorama.setAttribute('visible', 'false');
-      
-      const container = document.getElementById('buildings-container');
-      container.innerHTML = '';
-
-      // 5. Try entering WebXR native AR if supported by browser
-      const scene = document.querySelector('a-scene');
-      if (navigator.xr) {
-        scene.enterAR();
-      } else {
-        // Fallback for Safari/iOS: Make diorama visible and trigger automatic desk analysis immediately using camera feed
-        setTimeout(() => {
-          diorama.setAttribute('visible', 'true');
+          // 마커 감지 후 조도/색조 분석 강제 호출 (환경 분석 대기 상태 해제)
           analyzeDeskEnvironment();
-        }, 1200);
+          
+          // 마커 최초 발견 시 3D 프린팅 자동 트리거!
+          if (!hasPrintedOnce) {
+            hasPrintedOnce = true;
+            start3DPrinting();
+          } else {
+            setStatus('🎯 공간 고정 완료! 도시가 마커 위에 고정되었습니다.');
+          }
+        });
+
+        markerEl.addEventListener('markerLost', () => {
+          console.log("Marker Lost!");
+          markerVisible = false;
+          setStatus('🔍 마커를 찾아 카메라로 비춰주세요 (자이로 고정 모드)');
+          
+          // 💡 마커 유실 시 더 이상 opacity = 0으로 도시를 숨기지 않습니다.
+          // 기기 각도를 다른 방향으로 돌리면, 자이로센서 수학 연산에 의해 3D 공간 상에서 
+          // 자연스럽게 화면 좌우/상하 바깥으로 밀려나가 물리적 피사체처럼 가려집니다.
+        });
+
+      } catch (err) {
+        console.error("카메라 장치 연동 에러:", err);
+        startBtn.textContent = '📷 AR 카메라 연결 시작';
+        startBtn.disabled = false;
+        
+        let errorMsg = '카메라 장치를 시작할 수 없습니다.';
+        if (err.name === 'NotAllowedError') {
+          errorMsg = '카메라 사용 권한이 차단되었습니다. 주소창 왼쪽 자물쇠 버튼을 누르고 카메라 허용 설정을 활성화해주세요.';
+        } else if (err.name === 'NotReadableError') {
+          errorMsg = '카메라 장치가 다른 작업(화상회의 프로그램 등)에서 점유 중입니다.';
+        }
+        alert(errorMsg);
+
+        // 시뮬레이션 모드 (데스크톱/자이로 미지원 모듈 대체) 제안
+        const goSim = confirm('카메라 기기 획득에 실패했습니다. 카메라 없이 가상 시뮬레이션 모드로 시작할까요?');
+        if (goSim) {
+          isARModeActive = false;
+          markerVisible = false;
+          
+          document.getElementById('splash').classList.add('gone');
+          document.getElementById('ar-ui').classList.add('on');
+          
+          const cityStage = document.getElementById('city-stage');
+          if (cityStage) {
+            cityStage.classList.add('show');
+            cityStage.style.opacity = '1';
+          }
+          
+          panX = 0; panY = 0;
+          updateStageTransform();
+          analyzeDeskEnvironment(); // 임시 분석 테마 스위치
+        }
       }
     }
 
     function stopAR() {
-      stopCamera();
+      // 1. 진행 중인 애니메이션 프레임 및 타이머 해제
+      if (printAnimId) cancelAnimationFrame(printAnimId);
+      if (wobbleAnimId) cancelAnimationFrame(wobbleAnimId);
+      if (window.arPlaySafeguardInterval) {
+        clearInterval(window.arPlaySafeguardInterval);
+      }
       
-      // Restore body background
-      document.body.style.background = '#030712';
+      isARModeActive = false;
+      markerVisible = false;
+      isPrinting = false;
+      wobbleAnimId = null;
 
-      // Re-enable orbit-controls for desktop preview
-      const cameraEl = document.getElementById('main-camera');
-      if (cameraEl) {
-        cameraEl.setAttribute('orbit-controls', 'target: 0 0.05 0; minDistance: 0.15; maxDistance: 1.5; enableDamping: true; dampingFactor: 0.05;');
-        cameraEl.setAttribute('look-controls', 'enabled: true');
+      // 2. 동적으로 삽입한 A-Frame 씬 엘리먼트 제거
+      const scene = document.querySelector('a-scene');
+      if (scene) {
+        scene.parentNode.removeChild(scene);
       }
 
-      const scene = document.querySelector('a-scene');
-      if (scene.exitVR) scene.exitVR();
+      // 3. AR.js가 백그라운드로 추가한 webcam 비디오 스트림 및 임시 캔버스 완전 정리
+      const arVideos = document.querySelectorAll('body > video:not(#cam-video)');
+      arVideos.forEach(v => {
+        if (v.srcObject) {
+          try {
+            v.srcObject.getTracks().forEach(track => track.stop());
+          } catch(e) { console.warn("웹캠 스트림 중지 에러:", e); }
+        }
+        v.parentNode.removeChild(v);
+      });
 
+      const arCanvases = document.querySelectorAll('.a-canvas, .arjs-loader');
+      arCanvases.forEach(el => el.parentNode.removeChild(el));
+
+      // AR 활성화 클래스 제거
+      document.body.classList.remove('ar-active');
+
+      // 4. HTML/Body 스타일 및 오버플로우 값 원래 상태로 원복
+      document.body.setAttribute('style', originalBodyStyle);
+      document.body.className = originalBodyClass;
+      document.documentElement.setAttribute('style', originalHtmlStyle);
+      document.documentElement.className = originalHtmlClass;
+
+      // 5. CSS/UI 요소 초기 설정 상태 리셋
+      document.body.classList.remove('night-mode');
+      
+      const btnNight = document.getElementById('btn-night');
+      if (btnNight) {
+        btnNight.classList.add('active');
+        btnNight.textContent = '🌙 야간 조명: ON';
+      }
+      
+      const btnRain = document.getElementById('btn-rain');
+      if (btnRain) {
+        btnRain.classList.remove('active');
+        btnRain.textContent = '☀️ 날씨: 맑음';
+      }
+
+      const video = document.getElementById('cam-video');
+      if (video) {
+        video.style.display = 'none';
+        video.srcObject = null;
+      }
+
+      const cityStage = document.getElementById('city-stage');
+      if (cityStage) {
+        cityStage.classList.remove('show');
+        cityStage.style.opacity = '0';
+      }
+      
       document.getElementById('ar-ui').classList.remove('on');
-      
-      const splash = document.getElementById('splash');
-      splash.style.display = 'flex';
-      // Force reflow
-      splash.offsetHeight;
-      splash.classList.remove('gone');
-      
+      document.getElementById('splash').classList.remove('gone');
+
       const startBtn = document.getElementById('btn-start');
-      startBtn.disabled = false;
       startBtn.textContent = '📷 AR 카메라 연결 시작';
-      
-      // Restore desktop diorama preview
-      const diorama = document.getElementById('diorama-root');
-      diorama.setAttribute('visible', 'true');
-      rebuildCity(clutterValue);
-      spawnedBuildings.forEach(b => b.element.setAttribute('scale', '1 1 1'));
+      startBtn.disabled = false;
     }
+  function setStatus(msg) {
+    const el = document.getElementById('status');
+    if (el) el.textContent = msg;
+}
 
-    // ── Drag Interaction (Manual position locking on y=0 ground plane) ─────
-    let isDragging = false;
-    let dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-    let dragOffset = new THREE.Vector3();
-    let raycaster = new THREE.Raycaster();
-    let mouse = new THREE.Vector2();
-
-    window.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('#dashboard') || e.target.closest('#splash') || e.target.closest('#status')) return;
-      if (isPrinting) return; // Prevent drag & wobble during building growth animation!
-      
-      const scene = document.querySelector('a-scene');
-      if (!scene || !scene.camera) return;
-
-      // Cast ray to check if we clicked the diorama base or buildings
-      mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-      mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
-      raycaster.setFromCamera(mouse, scene.camera);
-
-      const dioramaBase = document.getElementById('diorama-base');
-      if (!dioramaBase || !dioramaBase.object3D) return;
-
-      // Find intersections with the diorama root hierarchy
-      const dioramaRoot = document.getElementById('diorama-root');
-      const intersects = raycaster.intersectObjects(dioramaRoot.object3D.children, true);
-
-      if (intersects.length > 0) {
-        // Clicked the diorama, start dragging!
-        isDragging = true;
-        
-        // Disable camera orbit controls during dragging so we don't rotate scene
-        const cameraEl = document.getElementById('main-camera');
-        cameraEl.setAttribute('orbit-controls', 'enabled: false');
-
-        // Wobble physics on touch impact
-        triggerWobble();
-
-        // Calculate offset on y=0 plane
-        let intersection = new THREE.Vector3();
-        raycaster.ray.intersectPlane(dragPlane, intersection);
-        
-        const rootPos = dioramaRoot.object3D.position;
-        dragOffset.copy(rootPos).sub(intersection);
-      }
-    });
-
-    window.addEventListener('pointermove', (e) => {
-      if (!isDragging) return;
-      if (isPrinting) return; // Prevent drag & wobble during building growth animation!
-
-      const scene = document.querySelector('a-scene');
-      if (!scene || !scene.camera) return;
-
-      mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-      mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
-      raycaster.setFromCamera(mouse, scene.camera);
-
-      let intersection = new THREE.Vector3();
-      if (raycaster.ray.intersectPlane(dragPlane, intersection)) {
-        const newPos = intersection.add(dragOffset);
-        
-        // Lock to ground Y=0
-        const dioramaRoot = document.getElementById('diorama-root');
-        dioramaRoot.setAttribute('position', `${newPos.x} 0 ${newPos.z}`);
-
-        // Soft drag wobble
-        triggerWobble();
-      }
-    });
-
-    window.addEventListener('pointerup', () => {
-      if (isDragging) {
-        isDragging = false;
-        
-        // Re-enable camera orbit controls
-        const cameraEl = document.getElementById('main-camera');
-        cameraEl.setAttribute('orbit-controls', 'enabled: true');
-      }
-    });
-
-    // Initialize Preview on desktop
-    window.addEventListener('load', () => {
-      setStatus('Desktop Preview - Standby');
-      document.getElementById('hud-archetype-name').textContent = ARCHETYPES[activeArch].name;
-      document.getElementById('hud-city-stats').textContent = ARCHETYPES[activeArch].desc;
-      rebuildCity(clutterValue);
-      spawnedBuildings.forEach(b => b.element.setAttribute('scale', '1 1 1'));
-      
-      // Bind direct click in A-Frame to trigger wobble
-      const container = document.getElementById('buildings-container');
-      container.addEventListener('click', (e) => {
-        triggerWobble();
-      });
-      
-      const base = document.getElementById('diorama-base');
-      base.addEventListener('click', (e) => {
-        triggerWobble();
-      });
-    });
-  </script>
 </body>
 </html>
