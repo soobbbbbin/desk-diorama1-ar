@@ -474,13 +474,7 @@
     <div id="support-note">3D 모델 로드 준비 중...</div>
 
     <div id="btn-container" style="width: 100%; max-width: 280px; display: flex; flex-direction: column; gap: 10px;">
-      <!-- Single Unified AR Button for non-iOS (WebXR / Simulator) -->
       <button class="btn-premium" id="btn-start" onclick="startAR('webar')" disabled>📷 AR 시작</button>
-      
-      <!-- Single Unified AR Button for iOS (will replace the above button on iOS) -->
-      <a id="btn-ios-link" rel="ar" href="#" style="display: none; width: 100%; text-decoration: none;">
-        <button class="btn-premium" style="width: 100%;">📷 AR 시작</button>
-      </a>
     </div>
   </div>
 
@@ -582,6 +576,13 @@
     let state = State.IDLE;
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
+    // Gyroscope tracking variables
+    let deviceOrientation = { alpha: 0, beta: 0, gamma: 0 };
+    let gyroActive = false;
+    let initialAlpha = null;
+    let yawOffset = 0;
+    let handleOrientationFn = null;
+
     let renderer, scene, camera;
     let xrSession = null, refSpace = null, hitSource = null;
     let reticle, cityGroup, cityContentGroup;
@@ -643,6 +644,73 @@
       if (el) el.textContent = msg;
       console.log("[Status]:", msg);
     };
+
+    // ── Gyroscope / Motion Control Functions ─────────────────────────
+    async function requestDeviceOrientationPermission() {
+      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        try {
+          const permissionState = await DeviceOrientationEvent.requestPermission();
+          return permissionState === 'granted';
+        } catch (error) {
+          console.warn("DeviceOrientation permission request failed:", error);
+          return false;
+        }
+      }
+      return true; // Non-iOS or older browsers
+    }
+
+    function startGyroscope() {
+      if (!window.DeviceOrientationEvent) return;
+      
+      handleOrientationFn = (e) => {
+        if (e.alpha !== null) {
+          deviceOrientation.alpha = e.alpha;
+          deviceOrientation.beta = e.beta;
+          deviceOrientation.gamma = e.gamma;
+          
+          if (initialAlpha === null) {
+            initialAlpha = e.alpha;
+            yawOffset = e.alpha; // Calibrate baseline
+          }
+        }
+      };
+      
+      window.addEventListener('deviceorientation', handleOrientationFn, true);
+      gyroActive = true;
+      console.log("Gyroscope tracking activated.");
+    }
+
+    function stopGyroscope() {
+      if (gyroActive && handleOrientationFn) {
+        window.removeEventListener('deviceorientation', handleOrientationFn, true);
+        gyroActive = false;
+        handleOrientationFn = null;
+        initialAlpha = null;
+        console.log("Gyroscope tracking deactivated.");
+      }
+    }
+
+    const euler = new THREE.Euler();
+    const q0 = new THREE.Quaternion();
+    const q1 = new THREE.Quaternion( - Math.sqrt( 0.5 ), 0, 0, Math.sqrt( 0.5 ) ); // - PI/2 around the x-axis
+
+    function updateCameraFromGyro() {
+      const alphaRad = deviceOrientation.alpha ? THREE.MathUtils.degToRad( deviceOrientation.alpha - yawOffset ) : 0;
+      const betaRad = deviceOrientation.beta ? THREE.MathUtils.degToRad( deviceOrientation.beta ) : 0;
+      const gammaRad = deviceOrientation.gamma ? THREE.MathUtils.degToRad( deviceOrientation.gamma ) : 0;
+      
+      const screenOrientation = window.orientation || 0;
+      const orientRad = THREE.MathUtils.degToRad( screenOrientation );
+      
+      // Map Tait-Bryan intrinsic angles (Z-X'-Y'') to Euler angles in 'YXZ' order
+      euler.set( betaRad, alphaRad, -gammaRad, 'YXZ' );
+      
+      camera.quaternion.setFromEuler( euler );
+      camera.quaternion.multiply( q1 ); // Align camera view direction
+      
+      q0.setFromAxisAngle( new THREE.Vector3( 0, 0, 1 ), -orientRad );
+      camera.quaternion.multiply( q0 ); // Screen rotation correction
+    }
 
     // ── Three.js Initialization ─────────────────────────────────────
     function initThree() {
@@ -1305,6 +1373,10 @@
       updateRain();
       updateWobble();
 
+      if (gyroActive) {
+        updateCameraFromGyro();
+      }
+
       if (state === State.PLACING) {
         raycaster.setFromCamera(pointer, camera);
         horizontalPlane.setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, -0.15, 0));
@@ -1542,6 +1614,12 @@
 
     // ── Session Control ───────────────────────────────────────────────
     window.startAR = async function(mode) {
+      // Request gyroscope permission in user gesture context
+      const gyroGranted = await requestDeviceOrientationPermission();
+      if (gyroGranted) {
+        startGyroscope();
+      }
+
       initThree();
 
       let useXR = false;
@@ -1613,8 +1691,12 @@
         isSimulator = true;
         await startCamera();
 
-        camera.position.set(0, 0.35, 0.65);
-        camera.lookAt(0, -0.05, 0);
+        camera.position.set(0, 0.15, 0);
+        if (!gyroActive) {
+          camera.rotation.set(-0.35, 0, 0); // default tilt looking down at the desk
+        } else {
+          camera.rotation.set(0, 0, 0);
+        }
 
         state = State.SCANNING;
         setHudState('scanning');
@@ -1710,6 +1792,8 @@
     function onSessionEnd() {
       xrSession = null; hitSource = null; refSpace = null;
       renderer.setAnimationLoop(null);
+      
+      stopGyroscope();
       
       if (webcamStream) {
         webcamStream.getTracks().forEach(track => track.stop());
@@ -1885,7 +1969,6 @@
     window.addEventListener('load', async () => {
       const note = document.getElementById('support-note');
       const startBtn = document.getElementById('btn-start');
-      const iosLink = document.getElementById('btn-ios-link');
 
       note.textContent = '⏳ 3D 디오라마 모델을 로딩 중...';
       note.style.borderColor = 'rgba(255, 200, 0, 0.3)';
@@ -1897,44 +1980,13 @@
         note.textContent = '✅ 3D 모델 로딩 완료!';
         note.style.borderColor = 'rgba(0, 255, 136, 0.3)';
         note.style.color = 'rgba(0, 255, 136, 0.8)';
-        if (startBtn) startBtn.disabled = false;
+        if (startBtn) {
+          startBtn.disabled = false;
+          startBtn.style.display = 'inline-block';
+        }
 
         // Auto fetch weather in background
         autoFetchWeather();
-
-        // If iOS Safari, prepare native USDZ Quick Look model
-        if (isIOS) {
-          note.textContent = '⏳ iOS용 Native AR Quick Look 구성 중...';
-          note.style.borderColor = 'rgba(255, 200, 0, 0.3)';
-          note.style.color = 'rgba(255, 200, 0, 0.8)';
-
-          const tempGroup = new THREE.Group();
-          tempGroup.add(dioramaModel.clone());
-
-          const exporter = new USDZExporter();
-          const arrayBuffer = await exporter.parseAsync(tempGroup);
-          const blob = new Blob([arrayBuffer], { type: 'model/vnd.usdz+zip' });
-          const usdzBlobUrl = URL.createObjectURL(blob);
-
-          if (iosLink) {
-            iosLink.setAttribute('href', usdzBlobUrl);
-            iosLink.style.display = 'inline-block';
-          }
-          if (startBtn) {
-            startBtn.style.display = 'none';
-          }
-          
-          note.textContent = '✅ iOS AR 준비 완료! 버튼을 눌러 시작하세요.';
-          note.style.borderColor = 'rgba(0, 255, 136, 0.3)';
-          note.style.color = 'rgba(0, 255, 136, 0.8)';
-        } else {
-          if (iosLink) {
-            iosLink.style.display = 'none';
-          }
-          if (startBtn) {
-            startBtn.style.display = 'inline-block';
-          }
-        }
       } catch (e) {
         console.error('Model loading failed:', e);
         note.textContent = '⚠ 3D 모델 로딩 실패: ' + e.message;
@@ -1944,9 +1996,6 @@
           startBtn.disabled = false;
           startBtn.style.display = 'inline-block';
           startBtn.textContent = '📷 카메라 로드 없이 시작';
-        }
-        if (iosLink) {
-          iosLink.style.display = 'none';
         }
       }
 
