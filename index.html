@@ -789,29 +789,33 @@
     // ── Weather & Environment particles ───────────────────────────────
     function createRain() {
       if (rainParticles) return;
-      rainGeometry = new THREE.BufferGeometry();
+      
+      const lineMaterial = new THREE.LineBasicMaterial({
+        color: 0x00d4ff,
+        transparent: true,
+        opacity: 0.6
+      });
+      
       const positions = [];
       const velocities = [];
       
       for (let i = 0; i < rainCount; i++) {
-        const x = (Math.random() - 0.5) * 0.26;
-        const y = 0.2 + Math.random() * 0.4;
-        const z = (Math.random() - 0.5) * 0.26;
+        const x = (Math.random() - 0.5) * 0.3;
+        const y = 0.1 + Math.random() * 0.3;
+        const z = (Math.random() - 0.5) * 0.3;
+        
+        // Line start (top of drop) and end (bottom of drop)
         positions.push(x, y, z);
-        velocities.push(0, -0.005 - Math.random() * 0.005, 0); 
+        positions.push(x, y - 0.015, z); // drop length = 1.5cm
+        
+        velocities.push(0, -0.004 - Math.random() * 0.004, 0);
       }
       
+      rainGeometry = new THREE.BufferGeometry();
       rainGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
       rainGeometry.userData = { velocities };
       
-      const rainMaterial = new THREE.PointsMaterial({
-        color: 0x00d4ff,
-        size: 0.002,
-        transparent: true,
-        opacity: 0.8
-      });
-      
-      rainParticles = new THREE.Points(rainGeometry, rainMaterial);
+      rainParticles = new THREE.LineSegments(rainGeometry, lineMaterial);
       rainParticles.visible = false;
       cityGroup.add(rainParticles);
     }
@@ -822,13 +826,26 @@
       const velocities = rainGeometry.userData.velocities;
       
       for (let i = 0; i < rainCount; i++) {
-        const idx = i * 3;
-        positions[idx + 1] += velocities[i].y;
+        const idx = i * 6; // 2 vertices per line = 6 coordinates
+        const vy = velocities[i].y;
         
-        if (positions[idx + 1] < 0) {
-          positions[idx + 1] = 0.35 + Math.random() * 0.25;
-          positions[idx] = (Math.random() - 0.5) * 0.26;
-          positions[idx + 2] = (Math.random() - 0.5) * 0.26;
+        // Move both start and end Y
+        positions[idx + 1] += vy;
+        positions[idx + 4] += vy;
+        
+        // If the bottom vertex goes below floor (y = 0)
+        if (positions[idx + 4] < 0) {
+          const x = (Math.random() - 0.5) * 0.3;
+          const y = 0.25 + Math.random() * 0.15;
+          const z = (Math.random() - 0.5) * 0.3;
+          
+          positions[idx] = x;
+          positions[idx + 1] = y;
+          positions[idx + 2] = z;
+          
+          positions[idx + 3] = x;
+          positions[idx + 4] = y - 0.015;
+          positions[idx + 5] = z;
         }
       }
       rainGeometry.attributes.position.needsUpdate = true;
@@ -885,6 +902,7 @@
     // ── Wobble Jelly Physics ──────────────────────────────────────────
     function triggerWobble() {
       wobbleStartTime = Date.now();
+      wobbleTime = 0; // Reset phase to start smoothly from 0
       isWobbling = true;
     }
 
@@ -904,9 +922,10 @@
       const intensity = 1.0 - (elapsed / 1000);
       wobbleTime += 0.35;
 
+      // Both use sine so rotation starts smoothly at sin(0) = 0
       const angleX = Math.sin(wobbleTime) * 0.15 * intensity; 
-      const angleZ = Math.cos(wobbleTime * 0.75) * 0.12 * intensity;
-      const scaleSquash = 1.0 - (Math.abs(angleX) * 0.08);
+      const angleZ = Math.sin(wobbleTime * 0.75) * 0.12 * intensity;
+      const scaleSquash = 1.0 - (Math.abs(angleX) * 0.45); // enhanced squash effect in radians
 
       spawnedBuildings.forEach(b => {
         const factor = b.userData.heightFactor || 1.0;
@@ -917,6 +936,28 @@
     }
 
     // ── Procedural Generator ──────────────────────────────────────────
+    function updateMaterialsForNightMode() {
+      if (!cityContentGroup) return;
+      
+      cityContentGroup.traverse((child) => {
+        if (child.isMesh) {
+          if (child.name === 'glass') {
+            child.material.emissiveIntensity = isNightMode ? 1.5 : 0.0;
+          }
+          else if (child.name === 'roof') {
+            if (currentConcept === 'chaos') {
+              child.material.emissiveIntensity = isNightMode ? 1.0 : 0.0;
+            } else {
+              child.material.emissiveIntensity = 0.0;
+            }
+          }
+          else if (child.name === 'antenna') {
+            child.material.emissiveIntensity = isNightMode ? 1.2 : 0.0;
+          }
+        }
+      });
+    }
+
     window.switchArchetype = function(key) {
       currentConcept = key;
 
@@ -993,6 +1034,7 @@
 
       setupModelForPrinting(cityContentGroup);
       start3DPrinting();
+      updateMaterialsForNightMode();
     }
 
     function generateProceduralGrid(concept, densityOverride) {
@@ -1026,118 +1068,110 @@
           let d = w;
 
           if (concept === 'ruins' && randomSeed() > 0.6) {
-            h = h * 0.4;
+            h = h * 0.5;
           }
 
           cellGroup.userData.heightFactor = h / 0.06;
 
+          let bodyColor, roofColor, glassColor, antColor;
+          let bodyMetalness = 0.5, bodyRoughness = 0.5;
+          const isParity = (x + z) % 2 === 0;
+
           if (concept === 'chaos') {
-            const coreGeo = new THREE.BoxGeometry(w * 0.8, h, d * 0.8);
-            const coreMat = new THREE.MeshStandardMaterial({ color: 0x110d1d, metalness: 0.9, roughness: 0.15 });
-            const coreMesh = new THREE.Mesh(coreGeo, coreMat);
-            coreMesh.position.y = h / 2;
-            coreMesh.castShadow = true;
-            coreMesh.receiveShadow = true;
-            cellGroup.add(coreMesh);
+            bodyColor = 0x110d1d;
+            bodyMetalness = 0.9;
+            bodyRoughness = 0.15;
+            roofColor = 0xff007f;
+            glassColor = isParity ? 0xff007f : 0x00ffff;
+            antColor = isParity ? 0xff007f : 0x00ffff;
+          } else if (concept === 'harmony') {
+            bodyColor = 0xf3f4f6;
+            bodyMetalness = 0.05;
+            bodyRoughness = 0.85;
+            roofColor = 0x54a065;
+            glassColor = 0xf59e0b;
+            antColor = 0x9ca3af;
+          } else if (concept === 'flow') {
+            bodyColor = 0x1e293b;
+            bodyMetalness = 0.8;
+            bodyRoughness = 0.25;
+            roofColor = 0x00d4ff;
+            glassColor = 0x00d4ff;
+            antColor = 0x007cff;
+          } else if (concept === 'ruins') {
+            bodyColor = 0x2b2520;
+            bodyMetalness = 0.1;
+            bodyRoughness = 0.95;
+            roofColor = 0x4a473d;
+            glassColor = 0xf97316;
+            antColor = 0x6b7280;
+          }
 
-            const glowColor = (x + z) % 2 === 0 ? 0xff007f : 0x00ffff;
-            const shellGeo = new THREE.BoxGeometry(w * 0.9, h * 0.5, d * 0.9);
-            const shellMat = new THREE.MeshStandardMaterial({
-              color: glowColor,
-              emissive: glowColor,
-              emissiveIntensity: 0.7,
-              transparent: true,
-              opacity: 0.6,
-              roughness: 0.1,
-              metalness: 0.9
+          // 1. Concrete Main Body
+          const bodyGeo = new THREE.BoxGeometry(w, h, d);
+          const bodyMat = new THREE.MeshStandardMaterial({
+            color: bodyColor,
+            metalness: bodyMetalness,
+            roughness: bodyRoughness
+          });
+          const bodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
+          bodyMesh.name = 'body';
+          bodyMesh.position.y = h / 2;
+          bodyMesh.castShadow = true;
+          bodyMesh.receiveShadow = true;
+          cellGroup.add(bodyMesh);
+
+          // 2. Nested Glass Window Shell
+          const glassGeo = new THREE.BoxGeometry(w * 0.75, h * 0.45, d * 0.75);
+          const glassMat = new THREE.MeshStandardMaterial({
+            color: glassColor,
+            emissive: glassColor,
+            emissiveIntensity: isNightMode ? 1.5 : 0.0,
+            transparent: true,
+            opacity: 0.8,
+            roughness: 0.1,
+            metalness: 0.9
+          });
+          const glassMesh = new THREE.Mesh(glassGeo, glassMat);
+          glassMesh.name = 'glass';
+          glassMesh.position.y = h * 0.65;
+          glassMesh.castShadow = true;
+          glassMesh.receiveShadow = true;
+          cellGroup.add(glassMesh);
+
+          // 3. Roof Cap
+          const roofGeo = new THREE.BoxGeometry(w * 0.9, 0.001, d * 0.9);
+          const roofMat = new THREE.MeshStandardMaterial({
+            color: roofColor,
+            emissive: concept === 'chaos' ? roofColor : 0x000000,
+            emissiveIntensity: (concept === 'chaos' && isNightMode) ? 1.0 : 0.0,
+            roughness: 0.5,
+            metalness: 0.5
+          });
+          const roofMesh = new THREE.Mesh(roofGeo, roofMat);
+          roofMesh.name = 'roof';
+          roofMesh.position.y = h;
+          roofMesh.castShadow = true;
+          roofMesh.receiveShadow = true;
+          cellGroup.add(roofMesh);
+
+          // 4. Optional thin Antenna
+          if (h > 0.07 && randomSeed() > 0.4) {
+            const antH = 0.015;
+            const antGeo = new THREE.CylinderGeometry(0.00075, 0.00075, antH, 6);
+            const antMat = new THREE.MeshStandardMaterial({
+              color: antColor,
+              emissive: antColor,
+              emissiveIntensity: isNightMode ? 1.2 : 0.0,
+              roughness: 0.3,
+              metalness: 0.8
             });
-            const shellMesh = new THREE.Mesh(shellGeo, shellMat);
-            shellMesh.position.y = h * 0.35;
-            cellGroup.add(shellMesh);
-
-            if (h > 0.07 && randomSeed() > 0.4) {
-              const antGeo = new THREE.CylinderGeometry(0.0008, 0.0008, 0.015, 6);
-              const antMat = new THREE.MeshStandardMaterial({ color: glowColor, emissive: glowColor, emissiveIntensity: 1.0 });
-              const antMesh = new THREE.Mesh(antGeo, antMat);
-              antMesh.position.y = h + 0.0075;
-              cellGroup.add(antMesh);
-            }
-          } 
-          else if (concept === 'harmony') {
-            const coreGeo = new THREE.BoxGeometry(w * 0.85, h * 0.95, d * 0.85);
-            const coreMat = new THREE.MeshStandardMaterial({ color: 0xf3f4f6, roughness: 0.85, metalness: 0.05 });
-            const coreMesh = new THREE.Mesh(coreGeo, coreMat);
-            coreMesh.position.y = (h * 0.95) / 2;
-            coreMesh.castShadow = true;
-            coreMesh.receiveShadow = true;
-            cellGroup.add(coreMesh);
-
-            const winGeo = new THREE.BoxGeometry(w * 0.9, h * 0.2, d * 0.5);
-            const winMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, emissive: 0xf59e0b, emissiveIntensity: 0.5 });
-            const winMesh = new THREE.Mesh(winGeo, winMat);
-            winMesh.position.set(0, h * 0.6, d * 0.2);
-            cellGroup.add(winMesh);
-
-            const roofGeo = new THREE.BoxGeometry(w * 0.9, 0.002, d * 0.9);
-            const roofMat = new THREE.MeshStandardMaterial({ color: 0x54a065, roughness: 0.7 });
-            const roofMesh = new THREE.Mesh(roofGeo, roofMat);
-            roofMesh.position.y = h * 0.96;
-            cellGroup.add(roofMesh);
-          } 
-          else if (concept === 'flow') {
-            const coreGeo = new THREE.BoxGeometry(w * 0.8, h * 0.95, d * 0.8);
-            const coreMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.8, roughness: 0.25 });
-            const coreMesh = new THREE.Mesh(coreGeo, coreMat);
-            coreMesh.position.y = (h * 0.95) / 2;
-            coreMesh.castShadow = true;
-            coreMesh.receiveShadow = true;
-            cellGroup.add(coreMesh);
-
-            const shellGeo = new THREE.BoxGeometry(w * 0.9, h * 0.4, d * 0.9);
-            const shellMat = new THREE.MeshStandardMaterial({
-              color: 0x00d4ff,
-              emissive: 0x00d4ff,
-              emissiveIntensity: 0.8,
-              transparent: true,
-              opacity: 0.65,
-              roughness: 0.1,
-              metalness: 0.9
-            });
-            const shellMesh = new THREE.Mesh(shellGeo, shellMat);
-            shellMesh.position.y = h * 0.55;
-            cellGroup.add(shellMesh);
-
-            const roofGeo = new THREE.BoxGeometry(w * 0.82, 0.002, d * 0.82);
-            const roofMat = new THREE.MeshStandardMaterial({ color: 0x00d4ff, emissive: 0x00d4ff, emissiveIntensity: 1.0 });
-            const roofMesh = new THREE.Mesh(roofGeo, roofMat);
-            roofMesh.position.y = h * 0.96;
-            cellGroup.add(roofMesh);
-          } 
-          else if (concept === 'ruins') {
-            const coreGeo = new THREE.BoxGeometry(w * 0.9, h, d * 0.9);
-            const coreMat = new THREE.MeshStandardMaterial({ color: 0x3d352e, roughness: 0.95, metalness: 0.1 });
-            const coreMesh = new THREE.Mesh(coreGeo, coreMat);
-            coreMesh.position.y = h / 2;
-            coreMesh.castShadow = true;
-            coreMesh.receiveShadow = true;
-            cellGroup.add(coreMesh);
-
-            const colGeo = new THREE.CylinderGeometry(0.001, 0.001, h, 6);
-            const colMat = new THREE.MeshStandardMaterial({ color: 0x54a065, roughness: 0.9 });
-            
-            const col1 = new THREE.Mesh(colGeo, colMat);
-            col1.position.set(w * 0.42, h / 2, d * 0.42);
-            cellGroup.add(col1);
-
-            const col2 = col1.clone();
-            col2.position.set(-w * 0.42, h / 2, -d * 0.42);
-            cellGroup.add(col2);
-
-            const crackGeo = new THREE.BoxGeometry(w * 0.95, h * 0.1, d * 0.15);
-            const crackMat = new THREE.MeshStandardMaterial({ color: 0xb46428, emissive: 0xb46428, emissiveIntensity: 0.4 });
-            const crackMesh = new THREE.Mesh(crackGeo, crackMat);
-            crackMesh.position.set(0, h * 0.35, d * 0.42);
-            cellGroup.add(crackMesh);
+            const antMesh = new THREE.Mesh(antGeo, antMat);
+            antMesh.name = 'antenna';
+            antMesh.position.y = h + antH / 2;
+            antMesh.castShadow = true;
+            antMesh.receiveShadow = true;
+            cellGroup.add(antMesh);
           }
 
           cityContentGroup.add(cellGroup);
@@ -1152,6 +1186,10 @@
       
       modelGroup.traverse((child) => {
         if (child.isMesh) {
+          if (!child.geometry || !child.geometry.attributes.position || child.geometry.attributes.position.count === 0) {
+            return;
+          }
+          
           child.userData.originalScale = child.scale.clone();
           child.userData.originalPosition = child.position.clone();
           
@@ -1884,10 +1922,11 @@
         body.classList.remove('night-mode');
         if (btn) {
           btn.classList.remove('active');
-          btn.textContent = '☀️ 주간 조명: ON';
+          btn.textContent = '🌙 야간 조명';
         }
       }
       applyWeather();
+      updateMaterialsForNightMode();
     };
 
     window.toggleRainMode = function(forcedState = null) {
