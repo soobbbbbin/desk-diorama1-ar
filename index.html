@@ -474,12 +474,12 @@
     <div id="support-note">3D 모델 로드 준비 중...</div>
 
     <div id="btn-container" style="width: 100%; max-width: 280px; display: flex; flex-direction: column; gap: 10px;">
-      <!-- WebXR / PC WebAR Simulator start button -->
-      <button class="btn-premium" id="btn-start" onclick="startAR('webar')" disabled>📷 WebAR 카메라 시작</button>
+      <!-- Single Unified AR Button for non-iOS (WebXR / Simulator) -->
+      <button class="btn-premium" id="btn-start" onclick="startAR('webar')" disabled>📷 AR 시작</button>
       
-      <!-- iOS Native USDZ Quick Look trigger link -->
+      <!-- Single Unified AR Button for iOS (will replace the above button on iOS) -->
       <a id="btn-ios-link" rel="ar" href="#" style="display: none; width: 100%; text-decoration: none;">
-        <button class="btn-premium" style="width: 100%; background: linear-gradient(135deg, #ffffff 0%, #d1d5db 100%); color: #111827; box-shadow: 0 0 20px rgba(255,255,255,0.15);">🍎 iOS Native AR 시작</button>
+        <button class="btn-premium" style="width: 100%;">📷 AR 시작</button>
       </a>
     </div>
   </div>
@@ -1920,10 +1920,20 @@
             iosLink.setAttribute('href', usdzBlobUrl);
             iosLink.style.display = 'inline-block';
           }
+          if (startBtn) {
+            startBtn.style.display = 'none';
+          }
           
           note.textContent = '✅ iOS AR 준비 완료! 버튼을 눌러 시작하세요.';
           note.style.borderColor = 'rgba(0, 255, 136, 0.3)';
           note.style.color = 'rgba(0, 255, 136, 0.8)';
+        } else {
+          if (iosLink) {
+            iosLink.style.display = 'none';
+          }
+          if (startBtn) {
+            startBtn.style.display = 'inline-block';
+          }
         }
       } catch (e) {
         console.error('Model loading failed:', e);
@@ -1932,7 +1942,11 @@
         note.style.color = 'rgba(255, 120, 120, 0.8)';
         if (startBtn) {
           startBtn.disabled = false;
+          startBtn.style.display = 'inline-block';
           startBtn.textContent = '📷 카메라 로드 없이 시작';
+        }
+        if (iosLink) {
+          iosLink.style.display = 'none';
         }
       }
 
