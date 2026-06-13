@@ -6,71 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
-  <script type="importmap">
-    {
-      "imports": {
-        "three": "https://cdn.jsdelivr.net/npm/three@0.150.0/build/three.module.js"
-      }
-    }
-  </script>
-  <!-- A-Frame & AR.js CDN -->
-  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@master/aframe/build/aframe-ar.js"></script>
-
-  <!-- 모바일 온스크린 디버그 콘솔 -->
-  <script>
-    (function() {
-      const consoleDiv = document.createElement('div');
-      consoleDiv.id = 'debug-log-console';
-      consoleDiv.style.cssText = 'position: fixed; bottom: 10px; left: 10px; right: 10px; height: 120px; background: rgba(0,0,0,0.85); color: #00ffcc; font-family: monospace; font-size: 10px; overflow-y: auto; z-index: 9999; border: 1px solid #00f0ff; border-radius: 6px; padding: 6px; pointer-events: auto; display: none;';
-      
-      const toggleBtn = document.createElement('button');
-      toggleBtn.textContent = '🛠️ 디버그 로그';
-      toggleBtn.style.cssText = 'position: fixed; bottom: 140px; right: 10px; z-index: 10000; padding: 6px 12px; background: #0f172a; border: 1px solid #00f0ff; color: #00f0ff; border-radius: 4px; font-size: 11px; font-weight: bold; cursor: pointer;';
-      toggleBtn.onclick = () => {
-        consoleDiv.style.display = consoleDiv.style.display === 'none' ? 'block' : 'none';
-      };
-      
-      document.addEventListener('DOMContentLoaded', () => {
-        document.body.appendChild(consoleDiv);
-        document.body.appendChild(toggleBtn);
-      });
-      
-      function logToScreen(type, args) {
-        const msg = Array.from(args).map(arg => {
-          if (typeof arg === 'object') {
-            try { return JSON.stringify(arg); } catch(e) { return arg.toString(); }
-          }
-          return arg;
-        }).join(' ');
-        
-        const logLine = document.createElement('div');
-        logLine.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
-        logLine.style.padding = '2px 0';
-        logLine.innerHTML = `[${new Date().toLocaleTimeString()}] <span style="color:${type === 'error' ? '#ff3366' : type === 'warn' ? '#ffcc00' : '#00ffcc'}">${type.toUpperCase()}</span>: ${msg}`;
-        consoleDiv.appendChild(logLine);
-        consoleDiv.scrollTop = consoleDiv.scrollHeight;
-      }
-      
-      window.onerror = function(message, source, lineno, colno, error) {
-        logToScreen('error', [`${message} at ${source}:${lineno}:${colno}`]);
-        return false;
-      };
-      
-      const origError = console.error;
-      console.error = function() {
-        logToScreen('error', arguments);
-        origError.apply(console, arguments);
-      };
-      
-      const origWarn = console.warn;
-      console.warn = function() {
-        logToScreen('warn', arguments);
-        origWarn.apply(console, arguments);
-      };
-    })();
-  </script>
-
+  
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -85,33 +21,33 @@
       user-select: none;
     }
 
+    /* Webcam video background */
     #cam-video {
       position: fixed;
       inset: 0;
-      width: 100%; height: 100%;
+      width: 100vw; height: 100vh;
       object-fit: cover;
       z-index: 1;
       display: none;
+      transition: filter 0.5s ease;
     }
     
     body.night-mode video {
       filter: brightness(0.35) contrast(1.1) saturate(0.8) sepia(0.1);
     }
 
-    a-scene, .a-canvas {
-      pointer-events: none !important;
-    }
-
     body.ar-active {
       background: transparent !important;
     }
 
-    body.ar-active video {
-      position: fixed !important;
-      top: 0 !important; left: 0 !important;
-      width: 100vw !important; height: 100vh !important;
-      object-fit: cover !important;
-      z-index: 1 !important;
+    /* WebGL Canvas layout */
+    canvas {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      z-index: 2;
+      display: block;
+      pointer-events: auto;
     }
 
     /* ══════════════════════════════
@@ -242,7 +178,7 @@
       pointer-events: none;
     }
 
-    /* 스캔 HUD 그리드 연출 */
+    /* scanning grid effect */
     #scanning-overlay {
       position: fixed;
       inset: 0;
@@ -284,6 +220,20 @@
       100% { transform: translate(-50%,-50%) scale(1); opacity: 0.8; }
     }
     #crosshair.pulse { animation: scanner-pulse 1.5s ease-in-out infinite; }
+
+    /* Hold progress ring */
+    #hold-ring {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+      width: 70px; height: 70px; display: none; z-index: 20;
+      pointer-events: none;
+    }
+    #hold-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+    #hold-ring circle.bg { fill: none; stroke: rgba(255,255,255,.15); stroke-width: 5; }
+    #hold-ring circle.fg {
+      fill: none; stroke: #00d4ff; stroke-width: 5;
+      stroke-dasharray: 188; stroke-dashoffset: 188;
+      transition: stroke-dashoffset .05s linear; stroke-linecap: round;
+    }
 
     /* Glassmorphism Dashboard */
     #dashboard {
@@ -501,6 +451,11 @@
     </svg>
   </div>
 
+  <!-- Hold ring -->
+  <div id="hold-ring">
+    <svg viewBox="0 0 60 60"><circle class="bg" cx="30" cy="30" r="27"/><circle class="fg" id="hold-fg" cx="30" cy="30" r="27"/></svg>
+  </div>
+
   <!-- ⚙️ 관리자 설정 패널 오픈 버튼 -->
   <button id="settings-btn-main" onclick="toggleDevPanel()">⚙️</button>
 
@@ -523,7 +478,7 @@
     <div id="support-note">3D 모델 로드 준비 중...</div>
 
     <div id="btn-container" style="display:flex; flex-direction:column; gap:0.8rem; align-items:center; width:100%; max-width:280px; margin: 0 auto;">
-      <button class="btn-premium" id="btn-start" onclick="startAR()" style="width:100%;" disabled>📷 AR 카메라 연결 시작</button>
+      <button class="btn-premium" id="btn-start" onclick="startAR('webar')" style="width:100%;" disabled>📷 AR 카메라 연결 시작</button>
       <a id="start-btn-link" rel="ar" href="#" style="width:100%; text-decoration:none; display:none; margin-top: 0.4rem;">
         <button id="start-ios-btn" class="btn-premium" style="width:100%; background: linear-gradient(135deg, #00f5d4, #9b5de5); box-shadow: 0 0 15px rgba(0,245,212,0.4); text-align:center;">🍎 iOS Native AR (Quick Look)</button>
       </a>
@@ -581,31 +536,91 @@
       </div>
 
       <div id="interaction-tip">
-        팁: 마커를 비추어 도시를 정렬하고,<br>건물을 탭하면 물리 진동 피드백이 발생합니다.
+        팁: 화면을 드래그하여 도시를 회정/이동하고,<br>건물을 탭하면 물리 진동 피드백이 발생합니다.
       </div>
 
       <button class="btn-exit-panel" onclick="stopAR()">✕ AR 종료 및 복귀</button>
     </div>
   </div>
 
+  <!-- 모바일 온스크린 디버그 콘솔 -->
+  <script>
+    (function() {
+      const consoleDiv = document.createElement('div');
+      consoleDiv.id = 'debug-log-console';
+      consoleDiv.style.cssText = 'position: fixed; bottom: 10px; left: 10px; right: 10px; height: 120px; background: rgba(0,0,0,0.85); color: #00ffcc; font-family: monospace; font-size: 10px; overflow-y: auto; z-index: 9999; border: 1px solid #00f0ff; border-radius: 6px; padding: 6px; pointer-events: auto; display: none;';
+      
+      const toggleBtn = document.createElement('button');
+      toggleBtn.textContent = '🛠️ 디버그 로그';
+      toggleBtn.style.cssText = 'position: fixed; bottom: 140px; right: 10px; z-index: 10000; padding: 6px 12px; background: #0f172a; border: 1px solid #00f0ff; color: #00f0ff; border-radius: 4px; font-size: 11px; font-weight: bold; cursor: pointer;';
+      toggleBtn.onclick = () => {
+        consoleDiv.style.display = consoleDiv.style.display === 'none' ? 'block' : 'none';
+      };
+      
+      document.addEventListener('DOMContentLoaded', () => {
+        document.body.appendChild(consoleDiv);
+        document.body.appendChild(toggleBtn);
+      });
+      
+      function logToScreen(type, args) {
+        const msg = Array.from(args).map(arg => {
+          if (typeof arg === 'object') {
+            try { return JSON.stringify(arg); } catch(e) { return arg.toString(); }
+          }
+          return arg;
+        }).join(' ');
+        
+        const logLine = document.createElement('div');
+        logLine.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
+        logLine.style.padding = '2px 0';
+        logLine.innerHTML = `[${new Date().toLocaleTimeString()}] <span style="color:${type === 'error' ? '#ff3366' : type === 'warn' ? '#ffcc00' : '#00ffcc'}">${type.toUpperCase()}</span>: ${msg}`;
+        consoleDiv.appendChild(logLine);
+        consoleDiv.scrollTop = consoleDiv.scrollHeight;
+      }
+      
+      window.onerror = function(message, source, lineno, colno, error) {
+        logToScreen('error', [`${message} at ${source}:${lineno}:${colno}`]);
+        return false;
+      };
+      
+      const origError = console.error;
+      console.error = function() {
+        logToScreen('error', arguments);
+        origError.apply(console, arguments);
+      };
+      
+      const origWarn = console.warn;
+      console.warn = function() {
+        logToScreen('warn', arguments);
+        origWarn.apply(console, arguments);
+      };
+    })();
+  </script>
 
-  <!-- Three.js inside A-Frame scripting -->
+  <!-- ES Module script - Bulletproof CDN configuration with absolute module rewrites -->
   <script type="module">
-    import { USDZExporter } from 'https://cdn.jsdelivr.net/npm/three@0.150.0/examples/jsm/exporters/USDZExporter.js';
-    import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.150.0/examples/jsm/loaders/GLTFLoader.js';
+    import * as THREE from 'https://esm.sh/three@0.165.0';
+    import { USDZExporter } from 'https://esm.sh/three@0.165.0/examples/jsm/exporters/USDZExporter.js';
+    import { GLTFLoader } from 'https://esm.sh/three@0.165.0/examples/jsm/loaders/GLTFLoader.js';
 
-    // A-Frame bundles Three.js globally as window.THREE
-    const THREE = window.THREE;
+    // Share with global variables safely
+    window.THREE = THREE;
+    window.USDZExporter = USDZExporter;
+    window.GLTFLoader = GLTFLoader;
 
     // States
     const State = { IDLE:'idle', SCANNING:'scanning', PLACING:'placing', PLACED:'placed' };
     let state = State.IDLE;
+    let isSimulator = false;
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
-    // Three.js Scene Components
-    let cityGroup = null, cityContentGroup = null;
+    // Three.js Core Components
+    let renderer = null, scene = null, camera = null;
+    let xrSession = null, refSpace = null, hitSource = null;
+    let reticle = null, cityGroup = null, cityContentGroup = null;
     let ambientLight = null, dirLight = null;
 
+    // Loading / Assets
     let usdzBlobUrl = null;
     let dioramaModel = null;
     let dioramaMeshes = [];
@@ -619,27 +634,19 @@
     const rainCount = 200;
     let sunMesh = null;
 
-    // Config variables
+    // Interaction Parameters
+    let panX = 0, panZ = 0;
+    let pitch = 55, yaw = -15;
+    let zoomScale = 1.0;
+
+    let isARModeActive = false;
+    let hasPrintedOnce = false;
+
+    // Geolocation / Environment analysis
     let currentConcept = 'chaos';
     let isRainyMode = false;
     let isNightMode = false;
-
-    // Interaction Parameters
-    let panX = 0, panY = 0;
-    let pitch = 55, yaw = -15;
-    let zoomScale = 0.9;
-
-    let isARModeActive = false;
-    let markerVisible = false;
-    let hasPrintedOnce = false;
-
-    const ABSOLUTE_SCALE = 0.72;
-
-    // Gyro Visual-Gyro Fusion
-    let currentOrientation = { alpha: 0, beta: 0, gamma: 0 };
-    const lastTrackedPosition = new THREE.Vector3();
-    const lastTrackedRotationMatrix = new THREE.Matrix4();
-    let anchorOrientation = null;
+    let clutterValue = 0.70;
 
     // Wobble variables
     let wobbleTime = 0;
@@ -647,11 +654,19 @@
     let isWobbling = false;
     let spawnedBuildings = [];
 
-    // Raycast click tracking
+    // Touch Interaction details
+    let isDragging = false;
+    let previousTouch = null;
+    let touchStartDist = 0;
+    let touchStartScale = 1.0;
+    let isMultiTouch = false;
+    let touchStartPos = { x: 0, y: 0 };
+    let holdStart = 0;
+    let holdActive = false;
+
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
 
-    // Archetype details
     const ARCH_DETAILS = {
       chaos: { name: "Chaos Neon District", desc: "GRID: 5x5 | NEON HIGH" },
       harmony: { name: "Minimal Harmony City", desc: "GRID: 5x5 | ECO CALM" },
@@ -660,124 +675,102 @@
       blender: { name: "Blender Custom Model", desc: "GRID: 3D MODEL" }
     };
 
-    // Bind setStatus
     window.setStatus = function(msg) {
       const el = document.getElementById('status');
       if (el) el.textContent = msg;
       console.log("[Status]:", msg);
     };
 
-    // Device orientation handler
-    window.addEventListener('deviceorientation', (e) => {
-      if (e.alpha !== null) {
-        currentOrientation.alpha = e.alpha;
-        currentOrientation.beta = e.beta;
-        currentOrientation.gamma = e.gamma;
-      }
-    }, true);
+    // ── Setup Three.js Scene ──
+    function initThree() {
+      if (renderer) return;
 
-    function getQuaternionFromOrientation(alpha, beta, gamma) {
-      const degToRad = Math.PI / 180;
-      const euler = new THREE.Euler(
-        beta * degToRad,
-        alpha * degToRad,
-        -gamma * degToRad,
-        'YXZ'
-      );
-      return new THREE.Quaternion().setFromEuler(euler);
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.setClearColor(0x000000, 0);
+
+      document.body.appendChild(renderer.domElement);
+
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.01, 20);
+      scene.add(camera);
+
+      // Lights
+      ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+      scene.add(ambientLight);
+
+      dirLight = new THREE.DirectionalLight(0xffffff, 1.8);
+      dirLight.position.set(0.5, 2.0, 0.5);
+      dirLight.castShadow = true;
+      dirLight.shadow.mapSize.width = 1024;
+      dirLight.shadow.mapSize.height = 1024;
+      dirLight.shadow.camera.near = 0.1;
+      dirLight.shadow.camera.far = 10;
+      dirLight.shadow.camera.left = -0.5;
+      dirLight.shadow.camera.right = 0.5;
+      dirLight.shadow.camera.top = 0.5;
+      dirLight.shadow.camera.bottom = -0.5;
+      scene.add(dirLight);
+
+      // Placement reticle
+      reticle = buildReticle();
+      reticle.visible = false;
+      scene.add(reticle);
+
+      // City containers
+      cityGroup = new THREE.Group();
+      cityGroup.visible = false;
+      scene.add(cityGroup);
+
+      cityContentGroup = new THREE.Group();
+      cityGroup.add(cityContentGroup);
+
+      // Grid helper inside Simulator Mode
+      const gridHelper = new THREE.GridHelper(1, 20, 0x00f5d4, 0x333333);
+      gridHelper.position.y = -0.15;
+      gridHelper.name = "simulatorGrid";
+      scene.add(gridHelper);
+
+      // Weather setup
+      createRain();
+      createSun();
+      applyWeather();
     }
 
-    async function requestGyroPermission() {
-      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-        try {
-          const permissionState = await DeviceOrientationEvent.requestPermission();
-          if (permissionState === 'granted') {
-            console.log("Gyroscope permission granted successfully.");
-          }
-        } catch (error) {
-          console.warn("DeviceOrientation permission request failed:", error);
-        }
-      }
+    function buildReticle() {
+      const g = new THREE.RingGeometry(0.04, 0.05, 32).rotateX(-Math.PI / 2);
+      const m = new THREE.MeshBasicMaterial({ color: 0x00d4ff, side: THREE.DoubleSide, transparent: true, opacity: 0.85 });
+      return new THREE.Mesh(g, m);
     }
 
-    /* ── A-Frame Custom Component Register ── */
-    AFRAME.registerComponent('diorama-controller', {
-      init: function () {
-        const sceneEl = this.el.sceneEl;
-        
-        // Shadow configuration on A-Frame renderer
-        const renderer = sceneEl.renderer;
-        if (renderer) {
-          renderer.shadowMap.enabled = true;
-          renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        }
+    /* ── Load GLTF Model ── */
+    function loadDioramaModel() {
+      return new Promise((resolve, reject) => {
+        const loader = new GLTFLoader();
+        loader.load('./Models/DeskDiorama_Building.glb', (gltf) => {
+          dioramaModel = gltf.scene;
+          dioramaModel.traverse((child) => {
+            if (child.isMesh) {
+              if (!child.material) {
+                child.material = new THREE.MeshStandardMaterial({ color: 0x888888 });
+              }
+              child.material.roughness = 0.45;
+              child.material.metalness = 0.2;
+              child.castShadow = true;
+              child.receiveShadow = true;
+            }
+          });
+          resolve(dioramaModel);
+        }, undefined, (error) => {
+          reject(error);
+        });
+      });
+    }
 
-        // Initialize three.js groups inside sceneEl
-        cityGroup = new THREE.Group();
-        sceneEl.object3D.add(cityGroup);
-
-        cityContentGroup = new THREE.Group();
-        cityGroup.add(cityContentGroup);
-
-        // Ambient Light
-        ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
-        sceneEl.object3D.add(ambientLight);
-
-        // Directional Light
-        dirLight = new THREE.DirectionalLight(0xffffff, 1.8);
-        dirLight.position.set(0.5, 2.0, 0.5);
-        dirLight.castShadow = true;
-        dirLight.shadow.mapSize.width = 1024;
-        dirLight.shadow.mapSize.height = 1024;
-        dirLight.shadow.camera.near = 0.1;
-        dirLight.shadow.camera.far = 10;
-        dirLight.shadow.camera.left = -0.5;
-        dirLight.shadow.camera.right = 0.5;
-        dirLight.shadow.camera.top = 0.5;
-        dirLight.shadow.camera.bottom = -0.5;
-        sceneEl.object3D.add(dirLight);
-
-        // Setup Rain particles and Sun
-        createRain();
-        createSun();
-
-        // Initial setup matching the config
-        toggleRainMode(isRainyMode);
-        toggleNightMode(isNightMode);
-
-        // Generate City content
-        generateCity(currentConcept);
-      },
-      tick: function (time, timeDelta) {
-        // Run updates on every A-Frame tick (synchronized 60fps)
-        updateRain();
-        updateWobble();
-        updateGridTransform();
-        
-        // Handle printing animation loop
-        if (isPrinting) {
-          printProgress = Math.min(1.0, printProgress + 0.015);
-          const printFill = document.getElementById('print-fill');
-          if (printFill) printFill.style.width = (printProgress * 100) + '%';
-          
-          animateDioramaPrinting(printProgress);
-          
-          if (printProgress >= 1.0) {
-            isPrinting = false;
-            const printBar = document.getElementById('print-bar');
-            if (printBar) printBar.style.display = 'none';
-            window.setStatus('🏙️ 디오라마 생성 완료! 마커를 비추어 감상하세요.');
-            
-            // Build USDZ for iOS preview fallback
-            updateUSDZExport();
-            
-            // Auto fetch weather on first successful print
-            autoFetchWeather();
-          }
-        }
-      }
-    });
-
+    /* ── Weather Particle System ── */
     function createRain() {
       if (rainParticles) return;
       rainGeometry = new THREE.BufferGeometry();
@@ -785,11 +778,11 @@
       const velocities = [];
       
       for (let i = 0; i < rainCount; i++) {
-        const x = (Math.random() - 0.5) * 0.28;
+        const x = (Math.random() - 0.5) * 0.26;
         const y = 0.2 + Math.random() * 0.4;
-        const z = (Math.random() - 0.5) * 0.28;
+        const z = (Math.random() - 0.5) * 0.26;
         positions.push(x, y, z);
-        velocities.push(0, -0.006 - Math.random() * 0.006, 0); 
+        velocities.push(0, -0.005 - Math.random() * 0.005, 0); 
       }
       
       rainGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
@@ -818,8 +811,8 @@
         
         if (positions[idx + 1] < 0) {
           positions[idx + 1] = 0.35 + Math.random() * 0.25;
-          positions[idx] = (Math.random() - 0.5) * 0.28;
-          positions[idx + 2] = (Math.random() - 0.5) * 0.28;
+          positions[idx] = (Math.random() - 0.5) * 0.26;
+          positions[idx + 2] = (Math.random() - 0.5) * 0.26;
         }
       }
       rainGeometry.attributes.position.needsUpdate = true;
@@ -843,57 +836,82 @@
       sunGroup.add(aura);
       
       sunMesh = sunGroup;
-      sunMesh.position.set(0.08, 0.24, 0.08);
+      sunMesh.position.set(0.08, 0.22, 0.08);
       sunMesh.visible = false;
       cityGroup.add(sunMesh);
     }
 
-    /* ── GLTF Model Preload ── */
-    function loadDioramaModel() {
-      return new Promise((resolve, reject) => {
-        const loader = new GLTFLoader();
-        loader.load('./Models/DeskDiorama_Building.glb', (gltf) => {
-          dioramaModel = gltf.scene;
-          
-          dioramaModel.traverse((child) => {
-            if (child.isMesh) {
-              if (!child.material) {
-                child.material = new THREE.MeshStandardMaterial({ color: 0x888888 });
-              }
-              child.material.roughness = 0.45;
-              child.material.metalness = 0.2;
-              child.castShadow = true;
-              child.receiveShadow = true;
-            }
-          });
-          resolve(dioramaModel);
-        }, undefined, (error) => {
-          reject(error);
-        });
-      });
+    function applyWeather() {
+      if (isRainyMode) {
+        if (rainParticles) rainParticles.visible = true;
+        if (sunMesh) sunMesh.visible = false;
+        if (dirLight) {
+          dirLight.intensity = isNightMode ? 0.25 : 0.6;
+          dirLight.color.setHex(0xaabbcc);
+        }
+      } else {
+        if (rainParticles) rainParticles.visible = false;
+        if (sunMesh) sunMesh.visible = true;
+        if (dirLight) {
+          dirLight.intensity = isNightMode ? 0.5 : 1.8;
+          dirLight.color.setHex(0xffffff);
+        }
+      }
+      
+      if (isNightMode) {
+        if (ambientLight) ambientLight.intensity = 0.15;
+      } else {
+        if (ambientLight) ambientLight.intensity = 0.7;
+      }
     }
 
     /* ── Camera Passthrough for Desktop Simulator ── */
-    async function startCamera() {
-      const video = document.getElementById('cam-video');
-      if (!video) return false;
-      video.style.display = 'block';
+    let webcamVideo = null;
+    let webcamStream = null;
 
+    async function startCamera() {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
+        webcamVideo = document.getElementById('cam-video');
+        if (!webcamVideo) {
+          webcamVideo = document.createElement('video');
+          webcamVideo.id = 'cam-video';
+          webcamVideo.setAttribute('autoplay', '');
+          webcamVideo.setAttribute('playsinline', '');
+          webcamVideo.style.position = 'fixed';
+          webcamVideo.style.inset = '0';
+          webcamVideo.style.width = '100vw';
+          webcamVideo.style.height = '100vh';
+          webcamVideo.style.objectFit = 'cover';
+          webcamVideo.style.zIndex = '1';
+          webcamVideo.style.pointerEvents = 'none';
+          document.body.appendChild(webcamVideo);
+        }
+        webcamVideo.style.display = 'block';
+
+        webcamStream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'environment' }
         });
-        video.srcObject = stream;
-        await video.play();
+        webcamVideo.srcObject = webcamStream;
+        await webcamVideo.play();
+        
+        // Transparent clear color so video feed displays behind
+        if (renderer) renderer.setClearColor(0x000000, 0);
         return true;
       } catch (err) {
-        console.warn('카메라 권한 획득 실패. 시뮬레이터 배경 적용.', err);
-        video.style.display = 'none';
+        console.warn('카메라 스트림 권한 획득 실패. 시뮬레이터 배경 적용.', err);
+        if (webcamVideo) webcamVideo.style.display = 'none';
+        
+        // Studio style background
+        if (renderer) renderer.setClearColor(0x0a0a16, 1);
         return false;
       }
     }
 
     function stopCamera() {
+      if (webcamStream) {
+        webcamStream.getTracks().forEach(track => track.stop());
+        webcamStream = null;
+      }
       const video = document.getElementById('cam-video');
       if (video) {
         video.style.display = 'none';
@@ -901,13 +919,11 @@
       }
     }
 
-    /* ── Light and Color Analysis ── */
+    /* ── Environment Color Analysis ── */
     function analyzeDeskEnvironment() {
-      // Find the camera video stream (AR.js injects one in body, or falls back to #cam-video)
-      const video = document.querySelector('body > video:not(#cam-video)') || document.getElementById('cam-video');
-      
+      const video = webcamVideo || document.getElementById('cam-video');
       if (!video || video.readyState !== 4) {
-        console.log("카메라 스트림 미준비로 랜덤 테마 설정");
+        console.log("웹캠 스트림 미준비로 랜덤 테마 설정");
         const themes = ['chaos', 'harmony', 'flow', 'ruins'];
         const randomTheme = themes[Math.floor(Math.random() * themes.length)];
         switchArchetype(randomTheme);
@@ -954,7 +970,7 @@
       }
     }
 
-    /* ── WebGL Wobble Physics ── */
+    /* ── WebGL Wobble Physics (Jelly effect) ── */
     function triggerWobble() {
       wobbleStartTime = Date.now();
       isWobbling = true;
@@ -967,7 +983,7 @@
         spawnedBuildings.forEach(b => {
           b.rotation.x = 0;
           b.rotation.z = 0;
-          b.scale.set(1, 1, 1);
+          b.scale.y = 1.0;
         });
         isWobbling = false;
         return;
@@ -976,9 +992,9 @@
       const intensity = 1.0 - (elapsed / 1000);
       wobbleTime += 0.35;
 
-      const angleX = Math.sin(wobbleTime) * 0.22 * intensity; 
-      const angleZ = Math.cos(wobbleTime * 0.75) * 0.18 * intensity;
-      const scaleSquash = 1.0 - (Math.abs(angleX) * 0.1);
+      const angleX = Math.sin(wobbleTime) * 0.15 * intensity; 
+      const angleZ = Math.cos(wobbleTime * 0.75) * 0.12 * intensity;
+      const scaleSquash = 1.0 - (Math.abs(angleX) * 0.08);
 
       spawnedBuildings.forEach(b => {
         const factor = b.userData.heightFactor || 1.0;
@@ -1071,7 +1087,7 @@
       // Pre-run setup for print scaling
       setupModelForPrinting(cityContentGroup);
       
-      // Trigger build printing animation
+      // Trigger build printing animation (no wobble on spawn)
       start3DPrinting();
     }
 
@@ -1283,87 +1299,126 @@
       if (printFill) printFill.style.width = '0%';
     }
 
-    /* ── Visual-Gyro Fusion & Transform Alignment ── */
-    function updateGridTransform() {
-      const sceneEl = document.querySelector('a-scene');
-      if (!sceneEl || !cityGroup) return;
+    /* ── Render frame loop ── */
+    let animationLoopId = null;
 
-      if (markerVisible) {
-        const anchor = document.getElementById('ar-anchor-point');
-        if (anchor && anchor.object3D) {
-          anchor.object3D.updateMatrixWorld(true);
-          
-          // Align cityGroup directly to tracked marker world position/rotation
-          cityGroup.position.setFromMatrixPosition(anchor.object3D.matrixWorld);
-          const rotMat = new THREE.Matrix4().extractRotation(anchor.object3D.matrixWorld);
-          cityGroup.rotation.setFromRotationMatrix(rotMat);
-          
-          // Apply user yaw rotation around local vertical axis
-          cityGroup.rotateY((yaw - (-15)) * Math.PI / 180);
-          
-          // Handle dynamic distance scaling
-          const camera = sceneEl.camera;
-          const cameraPosition = new THREE.Vector3();
-          cameraPosition.setFromMatrixPosition(camera.matrixWorld);
-          const distance = cityGroup.position.distanceTo(cameraPosition);
-          
-          const baseDistance = 4.0;
-          const distScale = Math.max(0.15, Math.min(2.5, baseDistance / distance));
-          const finalScale = ABSOLUTE_SCALE * distScale * zoomScale;
-          cityGroup.scale.set(finalScale, finalScale, finalScale);
-          
-          // Update visual world caches for Gyro Fusion fallback
-          lastTrackedPosition.copy(cityGroup.position);
-          lastTrackedRotationMatrix.copy(rotMat);
-          anchorOrientation = { ...currentOrientation };
+    function onFrame(time, frame) {
+      // Update weather drops
+      updateRain();
 
-          const hudStats = document.getElementById('hud-city-stats');
-          if (hudStats) {
-            hudStats.textContent = `AR: TRACKED | DIST: ${distance.toFixed(2)} | SCALE: ${finalScale.toFixed(2)}`;
+      // Update physical wobble rotation
+      updateWobble();
+
+      if (state === State.SCANNING || state === State.PLACING) {
+        if (xrSession && frame) {
+          // WebXR surface tracking hit testing
+          const hits = frame.getHitTestResults(hitSource);
+          if (hits.length > 0) {
+            const pose = hits[0].getPose(refSpace);
+            if (pose) {
+              reticle.visible = true;
+              reticle.matrix.fromArray(pose.transform.matrix);
+              reticle.matrixAutoUpdate = false;
+              
+              if (state === State.SCANNING) {
+                state = State.PLACING;
+                window.setStatus('초록 링이 보이면 화면을 탭하여 배치하세요!');
+              }
+
+              if (state === State.PLACING) {
+                cityGroup.matrix.copy(reticle.matrix);
+                cityGroup.matrixAutoUpdate = false;
+              }
+            }
+          } else {
+            reticle.visible = false;
+          }
+        } else if (isSimulator) {
+          // Desktop Simulator reticle tracking
+          raycaster.setFromCamera(pointer, camera);
+          const horizontalPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0.15); // table height
+          const planeIntersection = new THREE.Vector3();
+          
+          if (raycaster.ray.intersectPlane(horizontalPlane, planeIntersection)) {
+            reticle.visible = true;
+            reticle.position.copy(planeIntersection);
+            reticle.rotation.x = -Math.PI / 2;
+            
+            if (state === State.SCANNING) {
+              state = State.PLACING;
+              window.setStatus('화면을 클릭하여 디오라마를 배치하세요!');
+            }
+            if (state === State.PLACING) {
+              cityGroup.position.copy(planeIntersection);
+            }
           }
         }
-      } else if (isARModeActive && anchorOrientation) {
-        // Gyro Visual-Gyro Fusion (Hold position in WebGL when marker is lost)
-        const qCurrent = getQuaternionFromOrientation(currentOrientation.alpha, currentOrientation.beta, currentOrientation.gamma);
-        const qAnchor = getQuaternionFromOrientation(anchorOrientation.alpha, anchorOrientation.beta, anchorOrientation.gamma);
-        const qDelta = qCurrent.clone().multiply(qAnchor.clone().invert());
-        const qInvert = qDelta.clone().invert();
-        
-        const virtualPosition = lastTrackedPosition.clone().applyQuaternion(qInvert);
-        const virtualRotationMatrix = new THREE.Matrix4().makeRotationFromQuaternion(qInvert).multiply(lastTrackedRotationMatrix);
-        
-        cityGroup.position.copy(virtualPosition);
-        cityGroup.rotation.setFromRotationMatrix(virtualRotationMatrix);
-        cityGroup.rotateY((yaw - (-15)) * Math.PI / 180);
-        
-        const distance = virtualPosition.length();
-        const baseDistance = 4.0;
-        const distScale = Math.max(0.15, Math.min(2.5, baseDistance / distance));
-        const finalScale = ABSOLUTE_SCALE * distScale * zoomScale;
-        cityGroup.scale.set(finalScale, finalScale, finalScale);
+      }
 
-        const hudStats = document.getElementById('hud-city-stats');
-        if (hudStats) {
-          hudStats.textContent = `AR: GYRO HOLD | DIST: ${distance.toFixed(2)} | SCALE: ${finalScale.toFixed(2)}`;
+      if (state === State.PLACED) {
+        // 3D printing height increments
+        if (isPrinting) {
+          printProgress = Math.min(1.0, printProgress + 0.007);
+          const printFill = document.getElementById('print-fill');
+          if (printFill) printFill.style.width = (printProgress * 100) + '%';
+          
+          animateDioramaPrinting(printProgress);
+          
+          if (printProgress >= 1.0) {
+            isPrinting = false;
+            const printBar = document.getElementById('print-bar');
+            if (printBar) printBar.style.display = 'none';
+            window.setStatus('🏙️ 디오라마 생성 완료! 드래그하여 감상하세요.');
+            
+            updateUSDZExport();
+            autoFetchWeather();
+          }
         }
-      } else if (!isARModeActive) {
-        // Desktop / Simulator Orbit mode
-        cityGroup.position.set(panX * 0.001, (panY * -0.001) - 0.15, -0.45 * zoomScale);
-        cityGroup.rotation.set(pitch * Math.PI / 180, 0, yaw * Math.PI / 180);
-        cityGroup.scale.set(zoomScale, zoomScale, zoomScale);
 
-        const hudStats = document.getElementById('hud-city-stats');
-        if (hudStats) {
-          hudStats.textContent = `AR: SEARCHING MARKER | DESKTOP MODE`;
+        // Apply interactive orbit zoom scale and positioning offsets
+        if (isSimulator) {
+          // Simulator view controls: camera positioned naturally, diorama controlled locally
+          cityGroup.rotation.y = yaw * Math.PI / 180;
+          cityGroup.position.set(panX * 0.001, -0.15, panZ * 0.001);
+          cityGroup.scale.set(zoomScale, zoomScale, zoomScale);
+        } else {
+          // WebXR Session placed mode overrides
+          cityGroup.scale.set(zoomScale, zoomScale, zoomScale);
+        }
+
+        // Handle double tap/hold matrix reset
+        if (holdActive) {
+          const elapsed = (performance.now() - holdStart) / 1000;
+          const pct = Math.min(elapsed / 1.5, 1);
+          const ring = document.getElementById('hold-fg');
+          if (ring) ring.style.strokeDashoffset = 188 * (1 - pct);
+          if (pct >= 1) resetPlacement();
         }
       }
+
+      if (renderer) renderer.render(scene, camera);
     }
 
-    /* ── iOS Dynamic USDZ Export Fallback ── */
+    function resetPlacement() {
+      state = State.PLACING;
+      holdActive = false;
+      cityGroup.visible = false;
+      reticle.visible = true;
+      
+      const ring = document.getElementById('hold-fg');
+      if (ring) ring.style.strokeDashoffset = 188;
+      document.getElementById('hold-ring').style.display = 'none';
+
+      document.getElementById('scanning-overlay').style.display = 'block';
+      document.getElementById('crosshair').classList.add('show', 'pulse');
+
+      window.setStatus('화면을 클릭하여 다시 배치하세요!');
+    }
+
+    /* ── iOS USDZ Exporter ── */
     async function updateUSDZExport() {
       if (!isIOS) return;
 
-      const link = document.getElementById('start-btn-link');
       const startIosBtn = document.getElementById('start-ios-btn');
       if (startIosBtn) {
         startIosBtn.disabled = true;
@@ -1372,7 +1427,6 @@
 
       try {
         const tempGroup = new THREE.Group();
-        
         cityContentGroup.children.forEach(child => {
           const clone = child.clone();
           clone.traverse(node => {
@@ -1384,7 +1438,7 @@
           tempGroup.add(clone);
         });
 
-        if (!isRainyMode && sunMesh) {
+        if (sunMesh) {
           const sunClone = sunMesh.clone();
           sunClone.visible = true;
           tempGroup.add(sunClone);
@@ -1399,6 +1453,7 @@
         }
         usdzBlobUrl = URL.createObjectURL(blob);
         
+        const link = document.getElementById('start-btn-link');
         if (link) {
           link.setAttribute('href', usdzBlobUrl);
         }
@@ -1416,220 +1471,176 @@
       }
     }
 
-    /* ── AR LifeCycle Management ── */
-    window.startAR = async function() {
-      await requestGyroPermission();
+    /* ── Start WebAR / WebXR Lifecycle ── */
+    window.startAR = async function(mode) {
+      if (isIOS && mode === 'native') {
+        if (!usdzBlobUrl) {
+          alert('AR 모델 준비 중입니다. 잠시 후 시작 버튼을 눌러주세요.');
+          return;
+        }
+        const a = document.createElement('a');
+        a.setAttribute('rel', 'ar');
+        a.setAttribute('href', usdzBlobUrl);
+        const img = document.createElement('img');
+        a.appendChild(img);
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        return;
+      }
 
       const startBtn = document.getElementById('btn-start');
       startBtn.textContent = '카메라 권한 확인 중...';
       startBtn.disabled = true;
 
-      // Clean up previous streams
-      stopCamera();
+      initThree();
 
-      try {
-        if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-          throw new Error('카메라 접근은 HTTPS 환경에서만 허용됩니다.');
+      let useXR = false;
+      if (navigator.xr) {
+        try {
+          useXR = await navigator.xr.isSessionSupported('immersive-ar');
+        } catch (e) {
+          console.warn("WebXR isSessionSupported check failed:", e);
         }
+      }
 
-        isARModeActive = true;
-        hasPrintedOnce = false;
-        markerVisible = false;
-        anchorOrientation = null;
+      // Hide splash & show AR HUD overlays
+      document.body.classList.add('ar-active');
+      document.getElementById('splash').classList.add('gone');
+      document.getElementById('scanning-overlay').style.display = 'block';
+      document.getElementById('ar-ui').classList.add('on');
+      document.getElementById('crosshair').classList.add('show', 'pulse');
 
-        // Visual layout updates
-        document.body.classList.add('ar-active');
-        document.getElementById('splash').classList.add('gone');
-        document.getElementById('scanning-overlay').style.display = 'block';
-        document.getElementById('ar-ui').classList.add('on');
-        document.getElementById('crosshair').classList.add('show', 'pulse');
+      window.setStatus('스마트폰을 움직여 평면(바닥/책상)을 스캔하세요.');
 
-        window.setStatus('🔍 Hiro 마커를 카메라 화면에 비춰주세요');
+      const canvas = renderer.domElement;
+      canvas.addEventListener('mousedown', onPointerDown);
+      canvas.addEventListener('mousemove', onPointerMove);
+      canvas.addEventListener('mouseup', onPointerUp);
+      canvas.addEventListener('wheel', onWheel, { passive: false });
+      canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+      canvas.addEventListener('touchmove',  onTouchMove,  { passive: false });
+      canvas.addEventListener('touchend',   onTouchEnd);
 
-        // Dynamically inject A-Frame scene with AR.js
-        const sceneEl = document.createElement('a-scene');
-        sceneEl.setAttribute('embedded', '');
-        sceneEl.setAttribute('arjs', 'sourceType: webcam; debugUIEnabled: false; trackingMethod: best;');
-        sceneEl.setAttribute('vr-mode-ui', 'enabled: false');
-        sceneEl.setAttribute('style', 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none;');
-
-        const markerEl = document.createElement('a-marker');
-        markerEl.setAttribute('preset', 'hiro');
-        markerEl.setAttribute('id', 'ar-marker');
-
-        const anchorEl = document.createElement('a-entity');
-        anchorEl.setAttribute('id', 'ar-anchor-point');
-
-        const cameraEl = document.createElement('a-entity');
-        cameraEl.setAttribute('camera', '');
-
-        markerEl.appendChild(anchorEl);
-        sceneEl.appendChild(markerEl);
-        sceneEl.appendChild(cameraEl);
-
-        // Bind custom three.js component controller
-        sceneEl.setAttribute('diorama-controller', '');
-
-        document.body.appendChild(sceneEl);
-
-        // Mobile autoplay safeguard
-        window.arPlaySafeguardInterval = setInterval(() => {
-          const videos = document.querySelectorAll('video');
-          videos.forEach(v => {
-            if (v.paused) {
-              v.setAttribute('playsinline', 'true');
-              v.setAttribute('webkit-playsinline', 'true');
-              v.muted = true;
-              v.play().catch(e => console.log("Safeguard video play failed:", e));
-            }
+      if (useXR) {
+        // Native WebXR session
+        isSimulator = false;
+        try {
+          xrSession = await navigator.xr.requestSession('immersive-ar', {
+            requiredFeatures: ['hit-test'],
+            optionalFeatures: ['dom-overlay'],
+            domOverlay: { root: document.body }
           });
-        }, 250);
+          renderer.xr.setSession(xrSession);
+          refSpace = await xrSession.requestReferenceSpace('local');
+          const viewerSpace = await xrSession.requestReferenceSpace('viewer');
+          hitSource = await xrSession.requestHitTestSource({ space: viewerSpace });
 
-        // Event bindings on marker visibility
-        markerEl.addEventListener('markerFound', () => {
-          console.log("Hiro Marker Found!");
-          markerVisible = true;
+          xrSession.addEventListener('end', onSessionEnd);
+          
+          // Remove simulator grid inside true XR mode
+          const simGrid = scene.getObjectByName("simulatorGrid");
+          if (simGrid) simGrid.visible = false;
 
-          document.getElementById('scanning-overlay').style.display = 'none';
-          document.getElementById('crosshair').classList.remove('pulse', 'show');
+          renderer.setAnimationLoop(onFrame);
+        } catch (e) {
+          console.warn('WebXR session startup failed, falling back to Simulator:', e);
+          useXR = false;
+        }
+      }
 
-          // Trigger color analysis and environment mapping
-          analyzeDeskEnvironment();
+      if (!useXR) {
+        // Desktop / Mobile webcam simulator mode
+        isSimulator = true;
+        
+        // Setup initial camera viewport looking down at 45 degrees
+        camera.position.set(0, 0.35, 0.65);
+        camera.lookAt(0, -0.05, 0);
 
-          if (!hasPrintedOnce) {
-            hasPrintedOnce = true;
-            generateCity(currentConcept);
-          } else {
-            window.setStatus('🎯 공간 고정 완료! 도시가 마커 위에 고정되었습니다.');
+        const ok = await startCamera();
+        
+        // Keep simulator grid visible for spatial depth references
+        const simGrid = scene.getObjectByName("simulatorGrid");
+        if (simGrid) simGrid.visible = true;
+
+        state = State.SCANNING;
+
+        // Auto-complete simulator scanning in 2.5 seconds
+        setTimeout(() => {
+          if (state === State.SCANNING || state === State.PLACING) {
+            state = State.PLACING;
+            reticle.visible = true;
+            reticle.position.set(0, -0.15, -0.45);
+            cityGroup.position.copy(reticle.position);
+            window.setStatus('화면을 클릭하여 디오라마를 책상에 배치하세요!');
           }
-        });
+        }, 2200);
 
-        markerEl.addEventListener('markerLost', () => {
-          console.log("Hiro Marker Lost!");
-          markerVisible = false;
-          window.setStatus('🔍 마커를 찾아 카메라로 비춰주세요 (자이로 고정 모드)');
-        });
-
-        // Add window event listeners for dragging / interaction
-        window.addEventListener('pointerdown', onPointerDown);
-        window.addEventListener('pointermove', onPointerMove);
-        window.addEventListener('pointerup', onPointerUp);
-        window.addEventListener('wheel', onWheel, { passive: false });
-        window.addEventListener('touchstart', onTouchStart, { passive: false });
-        window.addEventListener('touchmove',  onTouchMove,  { passive: false });
-        window.addEventListener('touchend',   onTouchEnd);
-
-      } catch (err) {
-        console.error("카메라 장치 연동 에러:", err);
-        startBtn.textContent = '📷 AR 카메라 연결 시작';
-        startBtn.disabled = false;
-
-        let errorMsg = '카메라 장치를 시작할 수 없습니다.';
-        if (err.name === 'NotAllowedError') {
-          errorMsg = '카메라 사용 권한이 차단되었습니다. 주소창 왼쪽 자물쇠 버튼을 누르고 카메라 허용 설정을 활성화해주세요.';
-        }
-        alert(errorMsg);
-
-        // Fallback to PC/Desktop Simulator Mode
-        const goSim = confirm('카메라 기기 획득에 실패했습니다. 카메라 없이 가상 시뮬레이션 모드로 시작할까요?');
-        if (goSim) {
-          isARModeActive = false;
-          markerVisible = false;
-          
-          document.getElementById('splash').classList.add('gone');
-          document.getElementById('ar-ui').classList.add('on');
-          
-          // Setup standalone Three.js inside A-Frame
-          const sceneEl = document.createElement('a-scene');
-          sceneEl.setAttribute('style', 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none;');
-          sceneEl.setAttribute('diorama-controller', '');
-          document.body.appendChild(sceneEl);
-
-          panX = 0; panY = 0;
-          analyzeDeskEnvironment();
-
-          window.addEventListener('pointerdown', onPointerDown);
-          window.addEventListener('pointermove', onPointerMove);
-          window.addEventListener('pointerup', onPointerUp);
-          window.addEventListener('wheel', onWheel, { passive: false });
-          window.addEventListener('touchstart', onTouchStart, { passive: false });
-          window.addEventListener('touchmove',  onTouchMove,  { passive: false });
-          window.addEventListener('touchend',   onTouchEnd);
-        }
+        renderer.setAnimationLoop(onFrame);
       }
     };
 
     window.stopAR = function() {
-      if (window.arPlaySafeguardInterval) {
-        clearInterval(window.arPlaySafeguardInterval);
+      if (xrSession) {
+        xrSession.end();
+      } else {
+        onSessionEnd();
       }
-      
-      isARModeActive = false;
-      markerVisible = false;
-      isPrinting = false;
+    };
 
-      // Remove dynamic scene
-      const scene = document.querySelector('a-scene');
-      if (scene) {
-        scene.parentNode.removeChild(scene);
-      }
-
-      // Clean up AR.js video and canvas elements
-      const arVideos = document.querySelectorAll('body > video:not(#cam-video)');
-      arVideos.forEach(v => {
-        if (v.srcObject) {
-          try {
-            v.srcObject.getTracks().forEach(track => track.stop());
-          } catch(e) {}
-        }
-        v.parentNode.removeChild(v);
-      });
-
-      const arCanvases = document.querySelectorAll('.a-canvas, .arjs-loader');
-      arCanvases.forEach(el => el.parentNode.removeChild(el));
-
-      // Remove event listeners
-      window.removeEventListener('pointerdown', onPointerDown);
-      window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerup', onPointerUp);
-      window.removeEventListener('wheel', onWheel);
-      window.removeEventListener('touchstart', onTouchStart);
-      window.removeEventListener('touchmove',  onTouchMove);
-      window.removeEventListener('touchend',   onTouchEnd);
-
-      // Restore layout styles
-      document.body.classList.remove('ar-active', 'night-mode');
-      
-      const btnNight = document.getElementById('btn-night');
-      if (btnNight) {
-        btnNight.classList.remove('active');
-        btnNight.textContent = '🌙 야간 조명';
-      }
-      
-      const btnRain = document.getElementById('btn-rain');
-      if (btnRain) {
-        btnRain.classList.remove('active');
-        btnRain.textContent = '🌧️ 날씨: 비';
-      }
+    function onSessionEnd() {
+      xrSession = null; hitSource = null; refSpace = null;
+      if (renderer) renderer.setAnimationLoop(null);
 
       stopCamera();
 
+      document.body.classList.remove('ar-active', 'night-mode');
       document.getElementById('ar-ui').classList.remove('on');
       document.getElementById('splash').classList.remove('gone');
       document.getElementById('scanning-overlay').style.display = 'none';
       document.getElementById('crosshair').classList.remove('show', 'pulse');
 
       const startBtn = document.getElementById('btn-start');
-      startBtn.textContent = '📷 AR 카메라 연결 시작';
-      startBtn.disabled = false;
-    };
-
-    /* ── Geolocation Weather Auto Fetch ── */
-    async function autoFetchWeather() {
-      if (!navigator.geolocation) {
-        console.warn("Geolocation을 지원하지 않는 브라우저입니다.");
-        return;
+      if (startBtn) {
+        startBtn.textContent = '📷 AR AR 카메라 연결 시작';
+        startBtn.disabled = false;
       }
+
+      // Remove canvas listeners
+      if (renderer && renderer.domElement) {
+        const canvas = renderer.domElement;
+        canvas.removeEventListener('mousedown', onPointerDown);
+        canvas.removeEventListener('mousemove', onPointerMove);
+        canvas.removeEventListener('mouseup', onPointerUp);
+        canvas.removeEventListener('wheel', onWheel);
+        canvas.removeEventListener('touchstart', onTouchStart);
+        canvas.removeEventListener('touchmove',  onTouchMove);
+        canvas.removeEventListener('touchend',   onTouchEnd);
+        
+        canvas.remove();
+        renderer = null;
+      }
+      scene = null;
+      camera = null;
+      state = State.IDLE;
+    }
+
+    function placeCity() {
+      state = State.PLACED;
+      
+      document.getElementById('scanning-overlay').style.display = 'none';
+      document.getElementById('crosshair').classList.remove('show', 'pulse');
+      reticle.visible = false;
+      
+      cityGroup.visible = true;
+
+      // Color sampling environment theme trigger
+      analyzeDeskEnvironment();
+    }
+
+    /* ── Geolocation Weather Fetching ── */
+    async function autoFetchWeather() {
+      if (!navigator.geolocation) return;
       
       navigator.geolocation.getCurrentPosition(
         async (position) => {
@@ -1641,7 +1652,7 @@
             
             if (data && data.current) {
               const code = data.current.weather_code;
-              const isDay = data.current.is_day; // 1 = 낮, 0 = 밤
+              const isDay = data.current.is_day; // 1 = day, 0 = night
               
               const rainCodes = [51, 53, 55, 61, 63, 65, 80, 81, 82, 95, 96, 99];
               const isRaining = rainCodes.includes(code);
@@ -1661,7 +1672,7 @@
       );
     }
 
-    /* ── Dashboard Events ── */
+    /* ── HUD Controls binds ── */
     window.toggleDevPanel = function() {
       const panel = document.getElementById('dev-panel');
       const btn = document.getElementById('settings-btn-main');
@@ -1698,17 +1709,14 @@
           btn.classList.add('active');
           btn.textContent = '🌙 야간 조명: ON';
         }
-        if (ambientLight) ambientLight.intensity = 0.15;
-        if (dirLight) dirLight.intensity = isRainyMode ? 0.25 : 0.5;
       } else {
         body.classList.remove('night-mode');
         if (btn) {
           btn.classList.remove('active');
           btn.textContent = '☀️ 주간 조명: ON';
         }
-        if (ambientLight) ambientLight.intensity = 0.7;
-        if (dirLight) dirLight.intensity = isRainyMode ? 0.6 : 1.8;
       }
+      applyWeather();
       updateUSDZExport();
     };
 
@@ -1726,24 +1734,13 @@
           btn.classList.add('active');
           btn.textContent = '🌧️ 날씨: 비 (ON)';
         }
-        if (rainParticles) rainParticles.visible = true;
-        if (sunMesh) sunMesh.visible = false;
-        if (dirLight) {
-          dirLight.intensity = isNightMode ? 0.25 : 0.6;
-          dirLight.color.setHex(0xaabbcc);
-        }
       } else {
         if (btn) {
           btn.classList.remove('active');
           btn.textContent = '☀️ 날씨: 맑음';
         }
-        if (rainParticles) rainParticles.visible = false;
-        if (sunMesh) sunMesh.visible = true;
-        if (dirLight) {
-          dirLight.intensity = isNightMode ? 0.5 : 1.8;
-          dirLight.color.setHex(0xffffff);
-        }
       }
+      applyWeather();
       updateUSDZExport();
     };
 
@@ -1751,14 +1748,15 @@
       const label = document.getElementById('clutter-val');
       if (label) label.textContent = val + '%';
       
-      if (!isPrinting) {
-        generateCity(currentConcept, val / 100);
+      clutterValue = val / 100;
+      if (state === State.PLACED && !isPrinting) {
+        generateCity(currentConcept, clutterValue);
       }
     };
 
     window.triggerReprint = function() {
-      if (cityContentGroup) {
-        generateCity(currentConcept);
+      if (state === State.PLACED) {
+        generateCity(currentConcept, clutterValue);
       } else {
         alert('도시가 활성화되어 있지 않습니다!');
       }
@@ -1780,29 +1778,43 @@
       touchStartPos.y = y;
       isDragging = true;
       
-      // Raycast test for Wobble Click
-      pointer.x = (x / window.innerWidth) * 2 - 1;
-      pointer.y = -(y / window.innerHeight) * 2 + 1;
-      
-      const sceneEl = document.querySelector('a-scene');
-      if (sceneEl && sceneEl.camera && cityContentGroup) {
-        raycaster.setFromCamera(pointer, sceneEl.camera);
+      if (state === State.PLACING) {
+        placeCity();
+        return;
+      }
+
+      if (state === State.PLACED) {
+        // Building tap raycast wobbling
+        pointer.x = (x / window.innerWidth) * 2 - 1;
+        pointer.y = -(y / window.innerHeight) * 2 + 1;
+        
+        raycaster.setFromCamera(pointer, camera);
         const intersects = raycaster.intersectObjects(cityContentGroup.children, true);
         if (intersects.length > 0) {
           triggerWobble();
         }
+
+        // Long press/hold tracking to reset matrix placements
+        holdStart = performance.now();
+        holdActive = true;
+        document.getElementById('hold-ring').style.display = 'block';
       }
     }
 
     function handleMove(x, y) {
       if (!isDragging) return;
       
-      pointer.x = (x / window.innerWidth) * 2 - 1;
-      pointer.y = -(y / window.innerHeight) * 2 + 1;
+      const dist = Math.hypot(x - touchStartPos.x, y - touchStartPos.y);
+      if (dist > 15) {
+        holdActive = false;
+        document.getElementById('hold-ring').style.display = 'none';
+      }
     }
 
     function handleUp() {
       isDragging = false;
+      holdActive = false;
+      document.getElementById('hold-ring').style.display = 'none';
     }
 
     function onPointerDown(e) {
@@ -1813,18 +1825,23 @@
 
     function onPointerMove(e) {
       if (!isDragging) return;
+      handleMove(e.clientX, e.clientY);
+      
       const dx = e.clientX - previousTouch.x;
       const dy = e.clientY - previousTouch.y;
       
-      if (e.shiftKey || e.buttons === 2) {
-        // Drag to rotate diorama
-        yaw += dx * 0.45;
-      } else {
-        // Slide / reposition diorama
-        panX += dx;
-        panY += dy;
-        handleMove(e.clientX, e.clientY);
+      if (state === State.PLACED && isSimulator) {
+        if (e.shiftKey || e.buttons === 2) {
+          // Slide / pan model positioning
+          panX += dx * 0.45;
+          panZ += dy * 0.45;
+        } else {
+          // Rotate yaw and pitch orbits
+          yaw += dx * 0.45;
+          pitch = Math.max(10, Math.min(85, pitch - dy * 0.45));
+        }
       }
+      
       previousTouch = { x: e.clientX, y: e.clientY };
     }
 
@@ -1846,7 +1863,10 @@
         const t = e.touches[0];
         handleDown(t.clientX, t.clientY);
         previousTouch = { x: t.clientX, y: t.clientY };
-      } else if (e.touches.length === 2) {
+      } else if (e.touches.length === 2 && state === State.PLACED) {
+        holdActive = false;
+        document.getElementById('hold-ring').style.display = 'none';
+        
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         initialPinchDist = Math.hypot(dx, dy);
@@ -1860,23 +1880,29 @@
       
       if (e.touches.length === 1 && previousTouch) {
         const t = e.touches[0];
+        handleMove(t.clientX, t.clientY);
+        
         const dx = t.clientX - previousTouch.x;
         const dy = t.clientY - previousTouch.y;
         
-        yaw += dx * 0.45;
-        pitch = Math.max(10, Math.min(85, pitch - dy * 0.45));
+        if (state === State.PLACED && isSimulator) {
+          yaw += dx * 0.45;
+          pitch = Math.max(10, Math.min(85, pitch - dy * 0.45));
+        }
         
         previousTouch = { x: t.clientX, y: t.clientY };
-      } else if (e.touches.length === 2) {
+      } else if (e.touches.length === 2 && state === State.PLACED) {
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         
+        // Rotate
         const currentAngle = Math.atan2(dy, dx);
         if (previousTouch !== null) {
           yaw += (currentAngle - previousTouch) * 180 / Math.PI;
         }
         previousTouch = currentAngle;
         
+        // Pinch Zoom
         const dist = Math.hypot(dx, dy);
         if (initialPinchDist > 0) {
           const factor = dist / initialPinchDist;
@@ -1890,7 +1916,7 @@
       previousTouch = null;
     }
 
-    /* ── Preload model & Initial Configuration ── */
+    /* ── Initialization ── */
     window.addEventListener('load', async () => {
       const note = document.getElementById('support-note');
       const startBtn = document.getElementById('btn-start');
@@ -1913,7 +1939,6 @@
       }
 
       if (isIOS) {
-        // Keep Quick Look option as a fallback button for iOS Safari users
         const link = document.getElementById('start-btn-link');
         if (link) {
           link.style.display = 'inline-block';
@@ -1921,7 +1946,6 @@
         updateUSDZExport();
       }
       
-      // In-app check
       const ua = navigator.userAgent.toLowerCase();
       if (ua.includes('kakaotalk') || ua.includes('line') || ua.includes('instagram') || ua.includes('fb') || ua.includes('everytime')) {
         document.getElementById('inapp-warning').style.display = 'block';
