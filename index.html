@@ -616,8 +616,9 @@
 
     // Lighting & Environment
     let ambientLight, dirLight;
-    let rainParticles, rainGeometry;
-    const rainCount = 200;
+    let rainMesh;
+    let rainData = [];
+    const rainCount = 120;
     let sunMesh;
 
     let currentConcept = 'chaos';
@@ -788,67 +789,58 @@
 
     // ── Weather & Environment particles ───────────────────────────────
     function createRain() {
-      if (rainParticles) return;
+      if (rainMesh) return;
       
-      const lineMaterial = new THREE.LineBasicMaterial({
+      const rainGeo = new THREE.CylinderGeometry(0.0006, 0.0006, 0.015, 4);
+      const rainMat = new THREE.MeshBasicMaterial({
         color: 0x00d4ff,
         transparent: true,
-        opacity: 0.6
+        opacity: 0.7,
+        depthWrite: false
       });
       
-      const positions = [];
-      const velocities = [];
+      rainMesh = new THREE.InstancedMesh(rainGeo, rainMat, rainCount);
+      rainMesh.visible = false;
+      cityGroup.add(rainMesh);
+      
+      rainData = [];
+      const dummy = new THREE.Object3D();
       
       for (let i = 0; i < rainCount; i++) {
-        const x = (Math.random() - 0.5) * 0.3;
-        const y = 0.1 + Math.random() * 0.3;
-        const z = (Math.random() - 0.5) * 0.3;
+        const x = (Math.random() - 0.5) * 0.35;
+        const y = 0.05 + Math.random() * 0.35;
+        const z = (Math.random() - 0.5) * 0.35;
         
-        // Line start (top of drop) and end (bottom of drop)
-        positions.push(x, y, z);
-        positions.push(x, y - 0.015, z); // drop length = 1.5cm
+        const speed = -0.003 - Math.random() * 0.003;
+        rainData.push({ x, y, z, speed });
         
-        velocities.push(0, -0.004 - Math.random() * 0.004, 0);
+        dummy.position.set(x, y, z);
+        dummy.updateMatrix();
+        rainMesh.setMatrixAt(i, dummy.matrix);
       }
-      
-      rainGeometry = new THREE.BufferGeometry();
-      rainGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-      rainGeometry.userData = { velocities };
-      
-      rainParticles = new THREE.LineSegments(rainGeometry, lineMaterial);
-      rainParticles.visible = false;
-      cityGroup.add(rainParticles);
+      rainMesh.instanceMatrix.needsUpdate = true;
     }
 
     function updateRain() {
-      if (!rainParticles || !rainParticles.visible) return;
-      const positions = rainGeometry.attributes.position.array;
-      const velocities = rainGeometry.userData.velocities;
+      if (!rainMesh || !rainMesh.visible) return;
+      
+      const dummy = new THREE.Object3D();
       
       for (let i = 0; i < rainCount; i++) {
-        const idx = i * 6; // 2 vertices per line = 6 coordinates
-        const vy = velocities[i].y;
+        const drop = rainData[i];
+        drop.y += drop.speed;
         
-        // Move both start and end Y
-        positions[idx + 1] += vy;
-        positions[idx + 4] += vy;
-        
-        // If the bottom vertex goes below floor (y = 0)
-        if (positions[idx + 4] < 0) {
-          const x = (Math.random() - 0.5) * 0.3;
-          const y = 0.25 + Math.random() * 0.15;
-          const z = (Math.random() - 0.5) * 0.3;
-          
-          positions[idx] = x;
-          positions[idx + 1] = y;
-          positions[idx + 2] = z;
-          
-          positions[idx + 3] = x;
-          positions[idx + 4] = y - 0.015;
-          positions[idx + 5] = z;
+        if (drop.y < 0) {
+          drop.x = (Math.random() - 0.5) * 0.35;
+          drop.y = 0.3 + Math.random() * 0.15;
+          drop.z = (Math.random() - 0.5) * 0.35;
         }
+        
+        dummy.position.set(drop.x, drop.y, drop.z);
+        dummy.updateMatrix();
+        rainMesh.setMatrixAt(i, dummy.matrix);
       }
-      rainGeometry.attributes.position.needsUpdate = true;
+      rainMesh.instanceMatrix.needsUpdate = true;
     }
 
     function createSun() {
@@ -874,29 +866,46 @@
       cityGroup.add(sunMesh);
     }
 
+    function updateSunMoonVisual() {
+      if (!sunMesh || sunMesh.children.length < 2) return;
+      const sphere = sunMesh.children[0];
+      const aura = sunMesh.children[1];
+      if (isNightMode) {
+        sphere.material.color.setHex(0xddf0ff);
+        aura.material.color.setHex(0x88ccff);
+        aura.material.opacity = 0.3;
+      } else {
+        sphere.material.color.setHex(0xffaa00);
+        aura.material.color.setHex(0xffdd44);
+        aura.material.opacity = 0.45;
+      }
+    }
+
     function applyWeather() {
       if (!cityGroup) return;
       if (isRainyMode) {
-        if (rainParticles) rainParticles.visible = true;
+        if (rainMesh) rainMesh.visible = true;
         if (sunMesh) sunMesh.visible = false;
         if (dirLight) {
-          dirLight.intensity = isNightMode ? 0.25 : 0.6;
+          dirLight.intensity = isNightMode ? 0.05 : 0.6;
           dirLight.color.setHex(0xaabbcc);
         }
       } else {
-        if (rainParticles) rainParticles.visible = false;
+        if (rainMesh) rainMesh.visible = false;
         if (sunMesh) sunMesh.visible = true;
         if (dirLight) {
-          dirLight.intensity = isNightMode ? 0.5 : 1.8;
+          dirLight.intensity = isNightMode ? 0.1 : 1.8;
           dirLight.color.setHex(0xffffff);
         }
       }
       
       if (isNightMode) {
-        if (ambientLight) ambientLight.intensity = 0.15;
+        if (ambientLight) ambientLight.intensity = 0.05;
       } else {
         if (ambientLight) ambientLight.intensity = 0.7;
       }
+      
+      updateSunMoonVisual();
     }
 
     // ── Wobble Jelly Physics ──────────────────────────────────────────
@@ -953,6 +962,57 @@
           }
           else if (child.name === 'antenna') {
             child.material.emissiveIntensity = isNightMode ? 1.2 : 0.0;
+          }
+          
+          // Handle Blender model materials robustly
+          if (child.material) {
+            const materials = Array.isArray(child.material) ? child.material : [child.material];
+            materials.forEach((mat) => {
+              if (mat.name === 'Window_Cyan') {
+                mat.emissive.setHex(0x00ffff);
+                mat.emissiveIntensity = isNightMode ? 1.5 : 0.0;
+              }
+              else if (mat.name === 'Yellow_Light') {
+                mat.emissive.setHex(0xffaa00);
+                mat.emissiveIntensity = isNightMode ? 1.5 : 0.0;
+              }
+            });
+          }
+        } else if (child.name === 'neonLight') {
+          child.intensity = isNightMode ? 0.8 : 0.0;
+        }
+      });
+    }
+
+    function updateMaterialsForRainMode() {
+      if (!cityContentGroup) return;
+      
+      cityContentGroup.traverse((child) => {
+        if (child.isMesh && child.name === 'body') {
+          if (child.material) {
+            const materials = Array.isArray(child.material) ? child.material : [child.material];
+            materials.forEach((mat) => {
+              if (isRainyMode) {
+                // Wet reflection: low roughness
+                mat.roughness = 0.15;
+                if (currentConcept === 'harmony') mat.metalness = 0.2;
+              } else {
+                // Restore default roughness
+                if (currentConcept === 'chaos') {
+                  mat.roughness = 0.3;
+                  mat.metalness = 0.8;
+                } else if (currentConcept === 'harmony') {
+                  mat.roughness = 0.85;
+                  mat.metalness = 0.05;
+                } else if (currentConcept === 'flow') {
+                  mat.roughness = 0.25;
+                  mat.metalness = 0.8;
+                } else if (currentConcept === 'ruins') {
+                  mat.roughness = 0.95;
+                  mat.metalness = 0.1;
+                }
+              }
+            });
           }
         }
       });
@@ -1015,6 +1075,7 @@
       }
 
       const baseMesh = new THREE.Mesh(baseGeo, baseMat);
+      baseMesh.name = 'body'; // Name it 'body' to receive wet material updates
       baseMesh.position.y = -0.002;
       baseMesh.receiveShadow = true;
       cityContentGroup.add(baseMesh);
@@ -1024,6 +1085,16 @@
           const clone = dioramaModel.clone();
           clone.scale.set(0.08, 0.08, 0.08);
           clone.position.set(0, 0, 0);
+          
+          // Spawn street neon lights directly on the street lamp sphere
+          clone.traverse((child) => {
+            if (child.isMesh && child.name === 'Sphere') {
+              const neonLight = new THREE.PointLight(0xffdd44, isNightMode ? 0.8 : 0.0, 0.15);
+              neonLight.name = 'neonLight';
+              child.add(neonLight);
+            }
+          });
+          
           cityContentGroup.add(clone);
         } else {
           generateProceduralGrid('chaos', densityOverride);
@@ -1035,6 +1106,7 @@
       setupModelForPrinting(cityContentGroup);
       start3DPrinting();
       updateMaterialsForNightMode();
+      updateMaterialsForRainMode();
     }
 
     function generateProceduralGrid(concept, densityOverride) {
@@ -1172,6 +1244,14 @@
             antMesh.castShadow = true;
             antMesh.receiveShadow = true;
             cellGroup.add(antMesh);
+          }
+
+          // 5. PointLight for Cyberpunk Neon glow (Chaos & Flow archetypes)
+          if ((concept === 'chaos' || concept === 'flow') && h > 0.05) {
+            const neonLight = new THREE.PointLight(glassColor, isNightMode ? 0.6 : 0.0, 0.08);
+            neonLight.name = 'neonLight';
+            neonLight.position.set(0, h * 0.65, 0);
+            cellGroup.add(neonLight);
           }
 
           cityContentGroup.add(cellGroup);
@@ -1332,12 +1412,24 @@
       }
     }
 
+    function updateEnvironmentCycle() {
+      if (sunMesh && state === State.PLACED) {
+        const time = Date.now() * 0.00015;
+        const radius = 0.18;
+        sunMesh.position.x = Math.cos(time) * radius;
+        sunMesh.position.z = Math.sin(time) * radius;
+        
+        dirLight.position.copy(sunMesh.position).multiplyScalar(10);
+      }
+    }
+
     // ── WebXR IMMERSIVE-AR Frame loop ─────────────────────────────────
     function onFrameWebXR(time, frame) {
       if (!frame) return;
 
       updateRain();
       updateWobble();
+      updateEnvironmentCycle();
 
       if (state === State.PLACED) {
         if (placedMatrix) cityGroup.matrix.fromArray(placedMatrix);
@@ -1410,6 +1502,7 @@
     function onFrameSimulator(time) {
       updateRain();
       updateWobble();
+      updateEnvironmentCycle();
 
       if (gyroActive) {
         updateCameraFromGyro();
@@ -1862,6 +1955,9 @@
       
       document.body.classList.remove('ar-active', 'night-mode');
       
+      isNightMode = false;
+      isRainyMode = false;
+      
       const btnNight = document.getElementById('btn-night');
       if (btnNight) {
         btnNight.classList.remove('active');
@@ -1873,6 +1969,10 @@
         btnRain.classList.remove('active');
         btnRain.textContent = '🌧️ 날씨: 비';
       }
+
+      applyWeather();
+      updateMaterialsForNightMode();
+      updateMaterialsForRainMode();
 
       const startBtn = document.getElementById('btn-start');
       if (startBtn) {
@@ -1950,6 +2050,7 @@
         }
       }
       applyWeather();
+      updateMaterialsForRainMode();
     };
 
     window.onClutterSlider = function(val) {
