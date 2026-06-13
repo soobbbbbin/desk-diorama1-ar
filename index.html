@@ -1007,6 +1007,11 @@
                 document.getElementById('crosshair').classList.remove('pulse', 'show');
                 this.data.reticle.setAttribute('visible', 'false');
 
+                // Get reticle pose and place the target (diorama)
+                const reticlePos = this.data.reticle.getAttribute('position');
+                this.data.target.setAttribute('position', reticlePos);
+                this.data.target.setAttribute('visible', 'true');
+
                 // Analyze feed and print
                 analyzeDeskEnvironment();
               }
@@ -1043,8 +1048,7 @@
           this.data.reticle.setAttribute('position', `${pos.x} ${pos.y} ${pos.z}`);
           this.data.reticle.setAttribute('visible', 'true');
           
-          this.data.target.setAttribute('position', `${pos.x} ${pos.y} ${pos.z}`);
-          this.data.target.setAttribute('visible', 'true');
+          // Do not make the target visible yet during scanning! Keep it hidden.
           
           setStatus('SURFACE FOUND! 화면을 탭하여 도시 배치');
         } else {
@@ -1158,17 +1162,21 @@
 
       document.getElementById('ar-ui').classList.add('on');
       
-      // 4. Reveal diorama root at y=0 ground level for standard view
+      // 4. Keep diorama root hidden and clear container for 3D printing
       const diorama = document.getElementById('diorama-root');
-      diorama.setAttribute('visible', 'true');
+      diorama.setAttribute('visible', 'false');
+      
+      const container = document.getElementById('buildings-container');
+      container.innerHTML = '';
 
       // 5. Try entering WebXR native AR if supported by browser
       const scene = document.querySelector('a-scene');
       if (navigator.xr) {
         scene.enterAR();
       } else {
-        // Fallback for Safari/iOS: Trigger automatic desk analysis immediately using camera feed
+        // Fallback for Safari/iOS: Make diorama visible and trigger automatic desk analysis immediately using camera feed
         setTimeout(() => {
+          diorama.setAttribute('visible', 'true');
           analyzeDeskEnvironment();
         }, 1200);
       }
@@ -1202,8 +1210,11 @@
       startBtn.disabled = false;
       startBtn.textContent = '📷 AR 카메라 연결 시작';
       
+      // Restore desktop diorama preview
       const diorama = document.getElementById('diorama-root');
-      diorama.setAttribute('visible', 'false');
+      diorama.setAttribute('visible', 'true');
+      rebuildCity(clutterValue);
+      spawnedBuildings.forEach(b => b.element.setAttribute('scale', '1 1 1'));
     }
 
     // ── Drag Interaction (Manual position locking on y=0 ground plane) ─────
