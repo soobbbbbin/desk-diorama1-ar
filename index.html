@@ -1119,13 +1119,35 @@
 
     // ── Start/Stop AR flow ───────────────────────────────────────────────
     async function startAR() {
-      // 1. Start the camera stream as background
+      // 1. Request iOS Device Motion permission if available
+      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        try {
+          const permissionState = await DeviceOrientationEvent.requestPermission();
+          if (permissionState === 'granted') {
+            console.log("DeviceOrientation sensor access granted.");
+          } else {
+            console.warn("DeviceOrientation sensor access denied.");
+            setStatus("⚠️ 센서 권한이 거부되어 방향 회전이 작동하지 않습니다.");
+          }
+        } catch (error) {
+          console.error("Error requesting DeviceOrientation permission:", error);
+        }
+      }
+
+      // 2. Start the camera stream as background
       await startCamera();
 
       // Make body background transparent to see the camera stream behind it
       document.body.style.background = 'transparent';
 
-      // 2. Hide intro, show dashboard
+      // Disable orbit controls in AR mode to let look-controls / WebXR control the camera
+      const cameraEl = document.getElementById('main-camera');
+      if (cameraEl) {
+        cameraEl.removeAttribute('orbit-controls');
+        cameraEl.setAttribute('look-controls', 'enabled: true; magicWindowTrackingEnabled: true;');
+      }
+
+      // 3. Hide intro, show dashboard
       const splash = document.getElementById('splash');
       splash.classList.add('gone');
       setTimeout(() => {
@@ -1136,11 +1158,11 @@
 
       document.getElementById('ar-ui').classList.add('on');
       
-      // 3. Reveal diorama root at y=0 ground level for standard view
+      // 4. Reveal diorama root at y=0 ground level for standard view
       const diorama = document.getElementById('diorama-root');
       diorama.setAttribute('visible', 'true');
 
-      // 4. Try entering WebXR native AR if supported by browser
+      // 5. Try entering WebXR native AR if supported by browser
       const scene = document.querySelector('a-scene');
       if (navigator.xr) {
         scene.enterAR();
@@ -1157,6 +1179,13 @@
       
       // Restore body background
       document.body.style.background = '#030712';
+
+      // Re-enable orbit-controls for desktop preview
+      const cameraEl = document.getElementById('main-camera');
+      if (cameraEl) {
+        cameraEl.setAttribute('orbit-controls', 'target: 0 0.05 0; minDistance: 0.15; maxDistance: 1.5; enableDamping: true; dampingFactor: 0.05;');
+        cameraEl.setAttribute('look-controls', 'enabled: true');
+      }
 
       const scene = document.querySelector('a-scene');
       if (scene.exitVR) scene.exitVR();
