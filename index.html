@@ -6,14 +6,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
-
   <script type="importmap">
     {
       "imports": {
-        "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js"
+        "three": "https://cdn.jsdelivr.net/npm/three@0.150.0/build/three.module.js"
       }
     }
   </script>
+  <!-- A-Frame & AR.js CDN -->
+  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@master/aframe/build/aframe-ar.js"></script>
 
   <!-- 모바일 온스크린 디버그 콘솔 -->
   <script>
@@ -90,21 +92,26 @@
       object-fit: cover;
       z-index: 1;
       display: none;
-      transform: scaleX(-1);
     }
-    #cam-video.rear { transform: scaleX(1); }
     
     body.night-mode video {
       filter: brightness(0.35) contrast(1.1) saturate(0.8) sepia(0.1);
     }
 
-    canvas {
-      display: block;
-      position: absolute;
-      top: 0; left: 0;
-      width: 100vw; height: 100vh;
-      z-index: 2;
-      pointer-events: auto;
+    a-scene, .a-canvas {
+      pointer-events: none !important;
+    }
+
+    body.ar-active {
+      background: transparent !important;
+    }
+
+    body.ar-active video {
+      position: fixed !important;
+      top: 0 !important; left: 0 !important;
+      width: 100vw !important; height: 100vh !important;
+      object-fit: cover !important;
+      z-index: 1 !important;
     }
 
     /* ══════════════════════════════
@@ -278,19 +285,6 @@
     }
     #crosshair.pulse { animation: scanner-pulse 1.5s ease-in-out infinite; }
 
-    /* Scan progress bar container */
-    #scan-progress-container {
-      position: fixed; bottom: 330px; left: 50%; transform: translateX(-50%);
-      width: 85%; max-width: 320px; background: rgba(3,7,18,0.8); backdrop-filter: blur(12px);
-      border-radius: 12px; padding: 0.9rem 1.1rem; display: none; flex-direction: column; gap: 0.5rem;
-      z-index: 15; text-align: center; border: 1px solid rgba(255,255,255,0.1);
-    }
-    #scan-progress-container.visible { display: flex; }
-    .progress-bar-bg { width: 100%; height: 6px; background: rgba(255,255,255,0.15); border-radius: 3px; overflow: hidden; }
-    .progress-bar-fg { width: 0%; height: 100%; background: linear-gradient(90deg, #00d4ff, #9b5de5); border-radius: 3px; transition: width 0.1s; }
-    #scan-status-text { color: #fff; font-size: 0.85rem; font-weight: bold; }
-    #scan-sub-text { color: rgba(255,255,255,0.5); font-size: 0.72rem; }
-
     /* Glassmorphism Dashboard */
     #dashboard {
       position: absolute;
@@ -326,7 +320,7 @@
       font-family: monospace;
     }
 
-    /* Archetype selection inside developer panel */
+    /* Archetype selector inside developer panel */
     .archetype-selector {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
@@ -377,7 +371,7 @@
       box-shadow: 0 0 8px rgba(155, 93, 229, 0.4);
     }
 
-    /* Control options */
+    /* Controls grid */
     .controls-grid {
       display: grid;
       grid-template-columns: 1fr;
@@ -474,19 +468,6 @@
     }
     .btn-exit-panel:hover { background: rgba(239, 68, 68, 0.15); }
 
-    /* Reposition hold ring */
-    #hold-ring {
-      position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
-      width: 70px; height: 70px; display: none; z-index: 20;
-    }
-    #hold-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
-    #hold-ring circle.bg { fill: none; stroke: rgba(255,255,255,.15); stroke-width: 5; }
-    #hold-ring circle.fg {
-      fill: none; stroke: #00f5d4; stroke-width: 5;
-      stroke-dasharray: 188; stroke-dashoffset: 188;
-      transition: stroke-dashoffset .05s linear; stroke-linecap: round;
-    }
-
     /* Settings Button at Top Corner */
     #settings-btn-main {
       position: fixed; top: 15px; right: 15px; z-index: 30;
@@ -542,9 +523,9 @@
     <div id="support-note">3D 모델 로드 준비 중...</div>
 
     <div id="btn-container" style="display:flex; flex-direction:column; gap:0.8rem; align-items:center; width:100%; max-width:280px; margin: 0 auto;">
-      <button class="btn-premium" id="btn-start" onclick="startAR('webar')" style="width:100%;" disabled>📷 WebAR로 시작</button>
-      <a id="start-btn-link" rel="ar" href="#" style="width:100%; text-decoration:none; display:none;">
-        <button id="start-ios-btn" class="btn-premium" style="width:100%; background: linear-gradient(135deg, #00f5d4, #9b5de5); box-shadow: 0 0 15px rgba(0,245,212,0.4); text-align:center;">🍎 iOS Native AR 시작</button>
+      <button class="btn-premium" id="btn-start" onclick="startAR()" style="width:100%;" disabled>📷 AR 카메라 연결 시작</button>
+      <a id="start-btn-link" rel="ar" href="#" style="width:100%; text-decoration:none; display:none; margin-top: 0.4rem;">
+        <button id="start-ios-btn" class="btn-premium" style="width:100%; background: linear-gradient(135deg, #00f5d4, #9b5de5); box-shadow: 0 0 15px rgba(0,245,212,0.4); text-align:center;">🍎 iOS Native AR (Quick Look)</button>
       </a>
     </div>
   </div>
@@ -552,15 +533,6 @@
   <!-- AR UI 오버레이 -->
   <div id="ar-ui">
     <div id="status">📷 카메라 설정 중...</div>
-
-    <!-- 스캐닝 프로그레스 바 -->
-    <div id="scan-progress-container">
-      <div id="scan-status-text">바닥을 스캔하는 중... (0%)</div>
-      <div class="progress-bar-bg">
-        <div class="progress-bar-fg" id="scan-progress-fg"></div>
-      </div>
-      <div id="scan-sub-text">스마트폰을 들고 주변 바닥을 천천히 8자로 흔들어주세요</div>
-    </div>
 
     <!-- 유리 조작 대시보드 -->
     <div id="dashboard" style="position: relative;">
@@ -609,85 +581,77 @@
       </div>
 
       <div id="interaction-tip">
-        팁: 화면을 드래그하여 배치 및 회전하고,<br>건물을 탭하면 물리 진동 피드백이 발생합니다.<br>재배치 → 1.5초 화면 길게 누르기
+        팁: 마커를 비추어 도시를 정렬하고,<br>건물을 탭하면 물리 진동 피드백이 발생합니다.
       </div>
 
       <button class="btn-exit-panel" onclick="stopAR()">✕ AR 종료 및 복귀</button>
     </div>
   </div>
 
-  <!-- Reposition hold ring -->
-  <div id="hold-ring">
-    <svg viewBox="0 0 60 60"><circle class="bg" cx="30" cy="30" r="27"/><circle class="fg" id="hold-fg" cx="30" cy="30" r="27"/></svg>
-  </div>
 
-
-  <!-- Three.js logic script -->
+  <!-- Three.js inside A-Frame scripting -->
   <script type="module">
-    import * as THREE from 'three';
-    import { USDZExporter } from 'https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/exporters/USDZExporter.js';
-    import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/loaders/GLTFLoader.js';
+    import { USDZExporter } from 'https://cdn.jsdelivr.net/npm/three@0.150.0/examples/jsm/exporters/USDZExporter.js';
+    import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.150.0/examples/jsm/loaders/GLTFLoader.js';
 
-    // State Constants
+    // A-Frame bundles Three.js globally as window.THREE
+    const THREE = window.THREE;
+
+    // States
     const State = { IDLE:'idle', SCANNING:'scanning', PLACING:'placing', PLACED:'placed' };
     let state = State.IDLE;
-    let isSimulator = false;
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
-    // Three.js instances
-    let renderer, scene, camera;
-    let xrSession = null, refSpace = null, hitSource = null;
-    let reticle, cityGroup, cityContentGroup;
-    let ambientLight, dirLight;
+    // Three.js Scene Components
+    let cityGroup = null, cityContentGroup = null;
+    let ambientLight = null, dirLight = null;
 
-    // Reposition tracking
-    let holdStart = 0, holdActive = false;
-    let pointer = new THREE.Vector2(0, 0);
-
-    // Dynamic model variables
     let usdzBlobUrl = null;
     let dioramaModel = null;
     let dioramaMeshes = [];
     let maxMeshDistance = 0.01;
     let printProgress = 0;
-    let printAnimId = null;
     let isPrinting = false;
 
-    // Weather structures
+    // Weather Effects
     let rainParticles = null;
     let rainGeometry = null;
-    const rainCount = 250;
+    const rainCount = 200;
     let sunMesh = null;
 
-    // UI Configuration state
-    let currentConcept = 'chaos'; // 'chaos', 'harmony', 'flow', 'ruins', 'blender'
+    // Config variables
+    let currentConcept = 'chaos';
     let isRainyMode = false;
     let isNightMode = false;
-    let scanProgressVal = 0;
-    let scanInterval = null;
-    let webcamStream = null;
 
-    // Interaction controls
-    let touchStartPos = { x: 0, y: 0 };
-    let isDragging = false;
-    let previousTouch = null;
-    let initialScale = 0.9;
-    let initialPinchDist = 0;
-    let dragOffset = new THREE.Vector3();
-    let initialDioramaPos = new THREE.Vector3();
+    // Interaction Parameters
+    let panX = 0, panY = 0;
+    let pitch = 55, yaw = -15;
+    let zoomScale = 0.9;
 
-    // Raycast systems
-    const horizontalPlane = new THREE.Plane();
-    const planeIntersection = new THREE.Vector3();
-    const raycaster = new THREE.Raycaster();
-    let spawnedBuildings = [];
+    let isARModeActive = false;
+    let markerVisible = false;
+    let hasPrintedOnce = false;
+
+    const ABSOLUTE_SCALE = 0.72;
+
+    // Gyro Visual-Gyro Fusion
+    let currentOrientation = { alpha: 0, beta: 0, gamma: 0 };
+    const lastTrackedPosition = new THREE.Vector3();
+    const lastTrackedRotationMatrix = new THREE.Matrix4();
+    let anchorOrientation = null;
 
     // Wobble variables
     let wobbleTime = 0;
     let wobbleStartTime = 0;
     let isWobbling = false;
+    let spawnedBuildings = [];
 
-    // ARCHETYPE details mapping
+    // Raycast click tracking
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+
+    // Archetype details
     const ARCH_DETAILS = {
       chaos: { name: "Chaos Neon District", desc: "GRID: 5x5 | NEON HIGH" },
       harmony: { name: "Minimal Harmony City", desc: "GRID: 5x5 | ECO CALM" },
@@ -696,80 +660,123 @@
       blender: { name: "Blender Custom Model", desc: "GRID: 3D MODEL" }
     };
 
-    // Bind setStatus helper
+    // Bind setStatus
     window.setStatus = function(msg) {
       const el = document.getElementById('status');
       if (el) el.textContent = msg;
       console.log("[Status]:", msg);
     };
 
-    /* ── Three.js Initialization ── */
-    function initThree() {
-      if (renderer) return; // Prevent double init
-      
-      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-      renderer.setClearColor(0x000000, 0);
+    // Device orientation handler
+    window.addEventListener('deviceorientation', (e) => {
+      if (e.alpha !== null) {
+        currentOrientation.alpha = e.alpha;
+        currentOrientation.beta = e.beta;
+        currentOrientation.gamma = e.gamma;
+      }
+    }, true);
 
-      renderer.domElement.style.position = 'fixed';
-      renderer.domElement.style.top = '0';
-      renderer.domElement.style.left = '0';
-      renderer.domElement.style.width = '100vw';
-      renderer.domElement.style.height = '100vh';
-      renderer.domElement.style.zIndex = '2';
-      renderer.domElement.style.pointerEvents = 'auto';
-      document.body.appendChild(renderer.domElement);
-
-      scene = new THREE.Scene();
-      camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.01, 100);
-      scene.add(camera);
-
-      // Light setup
-      ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
-      scene.add(ambientLight);
-
-      dirLight = new THREE.DirectionalLight(0xffffff, 1.8);
-      dirLight.position.set(0.5, 2.0, 0.5);
-      dirLight.castShadow = true;
-      dirLight.shadow.mapSize.width = 1024;
-      dirLight.shadow.mapSize.height = 1024;
-      dirLight.shadow.camera.near = 0.1;
-      dirLight.shadow.camera.far = 10;
-      dirLight.shadow.camera.left = -0.5;
-      dirLight.shadow.camera.right = 0.5;
-      dirLight.shadow.camera.top = 0.5;
-      dirLight.shadow.camera.bottom = -0.5;
-      scene.add(dirLight);
-
-      // Placement Reticle
-      reticle = buildReticle();
-      reticle.visible = false;
-      scene.add(reticle);
-
-      // City Root Group
-      cityGroup = new THREE.Group();
-      cityGroup.visible = false;
-      scene.add(cityGroup);
-
-      cityContentGroup = new THREE.Group();
-      cityGroup.add(cityContentGroup);
-
-      // Create weather components
-      createRain();
-      createSun();
-      
-      // Sync weather toggles from state
-      toggleRainMode(isRainyMode);
+    function getQuaternionFromOrientation(alpha, beta, gamma) {
+      const degToRad = Math.PI / 180;
+      const euler = new THREE.Euler(
+        beta * degToRad,
+        alpha * degToRad,
+        -gamma * degToRad,
+        'YXZ'
+      );
+      return new THREE.Quaternion().setFromEuler(euler);
     }
 
-    function buildReticle() {
-      const geo = new THREE.RingGeometry(0.08, 0.09, 36).rotateX(-Math.PI / 2);
-      const mat = new THREE.MeshBasicMaterial({ color: 0x00d4ff, side: THREE.DoubleSide, transparent: true, opacity: 0.85 });
-      return new THREE.Mesh(geo, mat);
+    async function requestGyroPermission() {
+      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        try {
+          const permissionState = await DeviceOrientationEvent.requestPermission();
+          if (permissionState === 'granted') {
+            console.log("Gyroscope permission granted successfully.");
+          }
+        } catch (error) {
+          console.warn("DeviceOrientation permission request failed:", error);
+        }
+      }
     }
+
+    /* ── A-Frame Custom Component Register ── */
+    AFRAME.registerComponent('diorama-controller', {
+      init: function () {
+        const sceneEl = this.el.sceneEl;
+        
+        // Shadow configuration on A-Frame renderer
+        const renderer = sceneEl.renderer;
+        if (renderer) {
+          renderer.shadowMap.enabled = true;
+          renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        }
+
+        // Initialize three.js groups inside sceneEl
+        cityGroup = new THREE.Group();
+        sceneEl.object3D.add(cityGroup);
+
+        cityContentGroup = new THREE.Group();
+        cityGroup.add(cityContentGroup);
+
+        // Ambient Light
+        ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+        sceneEl.object3D.add(ambientLight);
+
+        // Directional Light
+        dirLight = new THREE.DirectionalLight(0xffffff, 1.8);
+        dirLight.position.set(0.5, 2.0, 0.5);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 1024;
+        dirLight.shadow.mapSize.height = 1024;
+        dirLight.shadow.camera.near = 0.1;
+        dirLight.shadow.camera.far = 10;
+        dirLight.shadow.camera.left = -0.5;
+        dirLight.shadow.camera.right = 0.5;
+        dirLight.shadow.camera.top = 0.5;
+        dirLight.shadow.camera.bottom = -0.5;
+        sceneEl.object3D.add(dirLight);
+
+        // Setup Rain particles and Sun
+        createRain();
+        createSun();
+
+        // Initial setup matching the config
+        toggleRainMode(isRainyMode);
+        toggleNightMode(isNightMode);
+
+        // Generate City content
+        generateCity(currentConcept);
+      },
+      tick: function (time, timeDelta) {
+        // Run updates on every A-Frame tick (synchronized 60fps)
+        updateRain();
+        updateWobble();
+        updateGridTransform();
+        
+        // Handle printing animation loop
+        if (isPrinting) {
+          printProgress = Math.min(1.0, printProgress + 0.015);
+          const printFill = document.getElementById('print-fill');
+          if (printFill) printFill.style.width = (printProgress * 100) + '%';
+          
+          animateDioramaPrinting(printProgress);
+          
+          if (printProgress >= 1.0) {
+            isPrinting = false;
+            const printBar = document.getElementById('print-bar');
+            if (printBar) printBar.style.display = 'none';
+            window.setStatus('🏙️ 디오라마 생성 완료! 마커를 비추어 감상하세요.');
+            
+            // Build USDZ for iOS preview fallback
+            updateUSDZExport();
+            
+            // Auto fetch weather on first successful print
+            autoFetchWeather();
+          }
+        }
+      }
+    });
 
     function createRain() {
       if (rainParticles) return;
@@ -841,7 +848,7 @@
       cityGroup.add(sunMesh);
     }
 
-    /* ── Loader ── */
+    /* ── GLTF Model Preload ── */
     function loadDioramaModel() {
       return new Promise((resolve, reject) => {
         const loader = new GLTFLoader();
@@ -866,22 +873,21 @@
       });
     }
 
-    /* ── Camera Passthrough ── */
+    /* ── Camera Passthrough for Desktop Simulator ── */
     async function startCamera() {
       const video = document.getElementById('cam-video');
       if (!video) return false;
       video.style.display = 'block';
 
       try {
-        webcamStream = await navigator.mediaDevices.getUserMedia({
+        const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'environment' }
         });
-        video.srcObject = webcamStream;
+        video.srcObject = stream;
         await video.play();
         return true;
       } catch (err) {
-        console.warn('카메라 획득 실패. 시뮬레이션 배경 적용.', err);
-        renderer.setClearColor(0x0c0c16, 1);
+        console.warn('카메라 권한 획득 실패. 시뮬레이터 배경 적용.', err);
         video.style.display = 'none';
         return false;
       }
@@ -893,15 +899,13 @@
         video.style.display = 'none';
         video.srcObject = null;
       }
-      if (webcamStream) {
-        webcamStream.getTracks().forEach(track => track.stop());
-        webcamStream = null;
-      }
     }
 
-    /* ── Desk Ambient Light Analysis ── */
+    /* ── Light and Color Analysis ── */
     function analyzeDeskEnvironment() {
-      const video = document.getElementById('cam-video');
+      // Find the camera video stream (AR.js injects one in body, or falls back to #cam-video)
+      const video = document.querySelector('body > video:not(#cam-video)') || document.getElementById('cam-video');
+      
       if (!video || video.readyState !== 4) {
         console.log("카메라 스트림 미준비로 랜덤 테마 설정");
         const themes = ['chaos', 'harmony', 'flow', 'ruins'];
@@ -950,14 +954,14 @@
       }
     }
 
-    /* ── Wobble Physics (WebGL) ── */
+    /* ── WebGL Wobble Physics ── */
     function triggerWobble() {
       wobbleStartTime = Date.now();
       isWobbling = true;
     }
 
     function updateWobble() {
-      if (!isWobbling) return;
+      if (!isWobbling || spawnedBuildings.length === 0) return;
       const elapsed = Date.now() - wobbleStartTime;
       if (elapsed >= 1000) {
         spawnedBuildings.forEach(b => {
@@ -972,7 +976,7 @@
       const intensity = 1.0 - (elapsed / 1000);
       wobbleTime += 0.35;
 
-      const angleX = Math.sin(wobbleTime) * 0.22 * intensity; // Radians for Wobble
+      const angleX = Math.sin(wobbleTime) * 0.22 * intensity; 
       const angleZ = Math.cos(wobbleTime * 0.75) * 0.18 * intensity;
       const scaleSquash = 1.0 - (Math.abs(angleX) * 0.1);
 
@@ -984,7 +988,7 @@
       });
     }
 
-    /* ── 3D City Builder ── */
+    /* ── 3D Procedural City Generator ── */
     window.switchArchetype = function(key) {
       currentConcept = key;
 
@@ -1003,7 +1007,7 @@
         targetBtn.classList.add('active', key);
       }
 
-      if (state === State.PLACED || isIOS) {
+      if (cityContentGroup) {
         generateCity(key);
       }
     };
@@ -1026,7 +1030,7 @@
         });
       }
 
-      // 1. Generate Base Plate
+      // Generate Base Plate
       const baseGeo = new THREE.BoxGeometry(0.24, 0.004, 0.24);
       let baseColor = 0xf2efe9;
       let baseMat = new THREE.MeshStandardMaterial({ color: baseColor, roughness: 0.7, metalness: 0.1 });
@@ -1050,7 +1054,7 @@
       baseMesh.receiveShadow = true;
       cityContentGroup.add(baseMesh);
 
-      // 2. Generate Grid Content
+      // Generate Grid Content
       if (concept === 'blender') {
         if (dioramaModel) {
           const clone = dioramaModel.clone();
@@ -1064,16 +1068,11 @@
         generateProceduralGrid(concept, densityOverride);
       }
 
-      // 3. Printing system initialization
+      // Pre-run setup for print scaling
       setupModelForPrinting(cityContentGroup);
-      printProgress = 0;
-      animateDioramaPrinting(0);
-
-      if (state === State.PLACED) {
-        start3DPrintingAnimation();
-      } else {
-        updateUSDZExport();
-      }
+      
+      // Trigger build printing animation
+      start3DPrinting();
     }
 
     function generateProceduralGrid(concept, densityOverride) {
@@ -1274,8 +1273,7 @@
       return x === 0 ? 0 : x === 1 ? 1 : 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2);
     }
 
-    function start3D3DPrinting() {
-      if (printAnimId) cancelAnimationFrame(printAnimId);
+    function start3DPrinting() {
       isPrinting = true;
       printProgress = 0;
       
@@ -1283,36 +1281,85 @@
       const printFill = document.getElementById('print-fill');
       if (printBar) printBar.style.display = 'block';
       if (printFill) printFill.style.width = '0%';
-      
-      generateCity(currentConcept);
     }
 
-    function start3DPrintingAnimation() {
-      isPrinting = true;
-      const printBar = document.getElementById('print-bar');
-      const printFill = document.getElementById('print-fill');
-      if (printBar) printBar.style.display = 'block';
+    /* ── Visual-Gyro Fusion & Transform Alignment ── */
+    function updateGridTransform() {
+      const sceneEl = document.querySelector('a-scene');
+      if (!sceneEl || !cityGroup) return;
 
-      function step() {
-        printProgress += 0.012;
-        if (printProgress > 1.0) printProgress = 1.0;
+      if (markerVisible) {
+        const anchor = document.getElementById('ar-anchor-point');
+        if (anchor && anchor.object3D) {
+          anchor.object3D.updateMatrixWorld(true);
+          
+          // Align cityGroup directly to tracked marker world position/rotation
+          cityGroup.position.setFromMatrixPosition(anchor.object3D.matrixWorld);
+          const rotMat = new THREE.Matrix4().extractRotation(anchor.object3D.matrixWorld);
+          cityGroup.rotation.setFromRotationMatrix(rotMat);
+          
+          // Apply user yaw rotation around local vertical axis
+          cityGroup.rotateY((yaw - (-15)) * Math.PI / 180);
+          
+          // Handle dynamic distance scaling
+          const camera = sceneEl.camera;
+          const cameraPosition = new THREE.Vector3();
+          cameraPosition.setFromMatrixPosition(camera.matrixWorld);
+          const distance = cityGroup.position.distanceTo(cameraPosition);
+          
+          const baseDistance = 4.0;
+          const distScale = Math.max(0.15, Math.min(2.5, baseDistance / distance));
+          const finalScale = ABSOLUTE_SCALE * distScale * zoomScale;
+          cityGroup.scale.set(finalScale, finalScale, finalScale);
+          
+          // Update visual world caches for Gyro Fusion fallback
+          lastTrackedPosition.copy(cityGroup.position);
+          lastTrackedRotationMatrix.copy(rotMat);
+          anchorOrientation = { ...currentOrientation };
+
+          const hudStats = document.getElementById('hud-city-stats');
+          if (hudStats) {
+            hudStats.textContent = `AR: TRACKED | DIST: ${distance.toFixed(2)} | SCALE: ${finalScale.toFixed(2)}`;
+          }
+        }
+      } else if (isARModeActive && anchorOrientation) {
+        // Gyro Visual-Gyro Fusion (Hold position in WebGL when marker is lost)
+        const qCurrent = getQuaternionFromOrientation(currentOrientation.alpha, currentOrientation.beta, currentOrientation.gamma);
+        const qAnchor = getQuaternionFromOrientation(anchorOrientation.alpha, anchorOrientation.beta, anchorOrientation.gamma);
+        const qDelta = qCurrent.clone().multiply(qAnchor.clone().invert());
+        const qInvert = qDelta.clone().invert();
         
-        if (printFill) printFill.style.width = `${printProgress * 100}%`;
-        animateDioramaPrinting(printProgress);
+        const virtualPosition = lastTrackedPosition.clone().applyQuaternion(qInvert);
+        const virtualRotationMatrix = new THREE.Matrix4().makeRotationFromQuaternion(qInvert).multiply(lastTrackedRotationMatrix);
+        
+        cityGroup.position.copy(virtualPosition);
+        cityGroup.rotation.setFromRotationMatrix(virtualRotationMatrix);
+        cityGroup.rotateY((yaw - (-15)) * Math.PI / 180);
+        
+        const distance = virtualPosition.length();
+        const baseDistance = 4.0;
+        const distScale = Math.max(0.15, Math.min(2.5, baseDistance / distance));
+        const finalScale = ABSOLUTE_SCALE * distScale * zoomScale;
+        cityGroup.scale.set(finalScale, finalScale, finalScale);
 
-        if (printProgress < 1.0) {
-          printAnimId = requestAnimationFrame(step);
-        } else {
-          isPrinting = false;
-          if (printBar) printBar.style.display = 'none';
-          window.setStatus('🏙️ 디오라마 생성 완료! 드래그하여 조정하세요');
-          updateUSDZExport();
+        const hudStats = document.getElementById('hud-city-stats');
+        if (hudStats) {
+          hudStats.textContent = `AR: GYRO HOLD | DIST: ${distance.toFixed(2)} | SCALE: ${finalScale.toFixed(2)}`;
+        }
+      } else if (!isARModeActive) {
+        // Desktop / Simulator Orbit mode
+        cityGroup.position.set(panX * 0.001, (panY * -0.001) - 0.15, -0.45 * zoomScale);
+        cityGroup.rotation.set(pitch * Math.PI / 180, 0, yaw * Math.PI / 180);
+        cityGroup.scale.set(zoomScale, zoomScale, zoomScale);
+
+        const hudStats = document.getElementById('hud-city-stats');
+        if (hudStats) {
+          hudStats.textContent = `AR: SEARCHING MARKER | DESKTOP MODE`;
         }
       }
-      printAnimId = requestAnimationFrame(step);
     }
 
-    /* ── iOS Dynamic USDZ Exporter ── */
+    /* ── iOS Dynamic USDZ Export Fallback ── */
     async function updateUSDZExport() {
       if (!isIOS) return;
 
@@ -1337,7 +1384,6 @@
           tempGroup.add(clone);
         });
 
-        // Add weather objects for USDZ if active
         if (!isRainyMode && sunMesh) {
           const sunClone = sunMesh.clone();
           sunClone.visible = true;
@@ -1370,466 +1416,252 @@
       }
     }
 
-    /* ── WebAR / WebXR Lifecycle ── */
-    window.startAR = async function(mode) {
-      initThree();
+    /* ── AR LifeCycle Management ── */
+    window.startAR = async function() {
+      await requestGyroPermission();
 
-      let useXR = false;
-      if (navigator.xr) {
-        try {
-          useXR = await navigator.xr.isSessionSupported('immersive-ar');
-        } catch (e) {
-          console.warn("WebXR immersive-ar check failed:", e);
+      const startBtn = document.getElementById('btn-start');
+      startBtn.textContent = '카메라 권한 확인 중...';
+      startBtn.disabled = true;
+
+      // Clean up previous streams
+      stopCamera();
+
+      try {
+        if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+          throw new Error('카메라 접근은 HTTPS 환경에서만 허용됩니다.');
         }
-      }
 
-      // Hide Landing Overlay
-      document.getElementById('splash').classList.add('gone');
-      document.getElementById('ar-ui').classList.add('on');
+        isARModeActive = true;
+        hasPrintedOnce = false;
+        markerVisible = false;
+        anchorOrientation = null;
 
-      // Bind input events
-      const canvas = renderer.domElement;
-      canvas.addEventListener('mousedown', onPointerDown);
-      canvas.addEventListener('mousemove', onPointerMove);
-      canvas.addEventListener('mouseup', onPointerUp);
-      canvas.addEventListener('wheel', onWheel, { passive: false });
-      canvas.addEventListener('touchstart', onTouchStart, { passive: false });
-      canvas.addEventListener('touchmove',  onTouchMove,  { passive: false });
-      canvas.addEventListener('touchend',   onTouchEnd);
-
-      if (useXR) {
-        isSimulator = false;
-        state = State.SCANNING;
+        // Visual layout updates
+        document.body.classList.add('ar-active');
+        document.getElementById('splash').classList.add('gone');
         document.getElementById('scanning-overlay').style.display = 'block';
+        document.getElementById('ar-ui').classList.add('on');
         document.getElementById('crosshair').classList.add('show', 'pulse');
 
-        const scanHUD = document.getElementById('scan-progress-container');
-        const scanFG = document.getElementById('scan-progress-fg');
-        const scanText = document.getElementById('scan-status-text');
-        
-        scanProgressVal = 0;
-        if (scanHUD) scanHUD.classList.add('visible');
+        window.setStatus('🔍 Hiro 마커를 카메라 화면에 비춰주세요');
 
-        let planesFound = false;
+        // Dynamically inject A-Frame scene with AR.js
+        const sceneEl = document.createElement('a-scene');
+        sceneEl.setAttribute('embedded', '');
+        sceneEl.setAttribute('arjs', 'sourceType: webcam; debugUIEnabled: false; trackingMethod: best;');
+        sceneEl.setAttribute('vr-mode-ui', 'enabled: false');
+        sceneEl.setAttribute('style', 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none;');
 
-        if (scanInterval) clearInterval(scanInterval);
-        scanInterval = setInterval(() => {
-          if (state === State.SCANNING) {
-            if (scanProgressVal < 92) {
-              scanProgressVal += Math.random() * 3 + 1.5;
-              scanProgressVal = Math.min(scanProgressVal, 92);
-              if (scanFG) scanFG.style.width = `${scanProgressVal}%`;
-              if (scanText) scanText.textContent = `바닥을 스캔하는 중... (${Math.floor(scanProgressVal)}%)`;
+        const markerEl = document.createElement('a-marker');
+        markerEl.setAttribute('preset', 'hiro');
+        markerEl.setAttribute('id', 'ar-marker');
+
+        const anchorEl = document.createElement('a-entity');
+        anchorEl.setAttribute('id', 'ar-anchor-point');
+
+        const cameraEl = document.createElement('a-entity');
+        cameraEl.setAttribute('camera', '');
+
+        markerEl.appendChild(anchorEl);
+        sceneEl.appendChild(markerEl);
+        sceneEl.appendChild(cameraEl);
+
+        // Bind custom three.js component controller
+        sceneEl.setAttribute('diorama-controller', '');
+
+        document.body.appendChild(sceneEl);
+
+        // Mobile autoplay safeguard
+        window.arPlaySafeguardInterval = setInterval(() => {
+          const videos = document.querySelectorAll('video');
+          videos.forEach(v => {
+            if (v.paused) {
+              v.setAttribute('playsinline', 'true');
+              v.setAttribute('webkit-playsinline', 'true');
+              v.muted = true;
+              v.play().catch(e => console.log("Safeguard video play failed:", e));
             }
-          }
-        }, 180);
-
-        // Timeout Fallback
-        setTimeout(() => {
-          if (state === State.SCANNING && !planesFound) {
-            console.log("Plane detection timeout. Placing diorama.");
-            if (scanInterval) clearInterval(scanInterval);
-            
-            if (scanFG) scanFG.style.width = '100%';
-            if (scanText) scanText.textContent = '스캔 완료!';
-            
-            setTimeout(() => {
-              state = State.PLACING;
-              if (scanHUD) scanHUD.classList.remove('visible');
-              
-              reticle.visible = true;
-              reticle.position.set(0, -0.5, -1.2);
-              reticle.rotation.x = -Math.PI / 2;
-              
-              cityGroup.visible = true;
-              cityGroup.position.copy(reticle.position);
-              window.setStatus('탭하여 도시를 배치하세요!');
-            }, 800);
-          }
-        }, 5500);
-
-        try {
-          xrSession = await navigator.xr.requestSession('immersive-ar', {
-            requiredFeatures: ['hit-test'],
-            optionalFeatures: ['dom-overlay', 'light-estimation'],
-            domOverlay: { root: document.body }
           });
-          renderer.xr.setSession(xrSession);
-          refSpace = await xrSession.requestReferenceSpace('local');
-          const viewerSpace = await xrSession.requestReferenceSpace('viewer');
-          hitSource = await xrSession.requestHitTestSource({ space: viewerSpace });
-        } catch(e) {
-          console.warn('WebXR session failed, falling back to Simulator:', e);
-          useXR = false;
-        }
-      }
+        }, 250);
 
-      if (!useXR) {
-        // Run Simulator Mode
-        isSimulator = true;
-        await startCamera();
-        
-        camera.position.set(0, 0.4, 0.8);
-        camera.lookAt(0, -0.1, 0);
+        // Event bindings on marker visibility
+        markerEl.addEventListener('markerFound', () => {
+          console.log("Hiro Marker Found!");
+          markerVisible = true;
 
-        state = State.SCANNING;
-        document.getElementById('scanning-overlay').style.display = 'block';
-        document.getElementById('crosshair').classList.add('show', 'pulse');
+          document.getElementById('scanning-overlay').style.display = 'none';
+          document.getElementById('crosshair').classList.remove('pulse', 'show');
 
-        const scanHUD = document.getElementById('scan-progress-container');
-        const scanFG = document.getElementById('scan-progress-fg');
-        const scanText = document.getElementById('scan-status-text');
-        
-        scanProgressVal = 0;
-        if (scanHUD) scanHUD.classList.add('visible');
+          // Trigger color analysis and environment mapping
+          analyzeDeskEnvironment();
 
-        if (scanInterval) clearInterval(scanInterval);
-        scanInterval = setInterval(() => {
-          if (state === State.SCANNING) {
-            scanProgressVal += Math.random() * 5 + 3;
-            if (scanProgressVal >= 100) {
-              scanProgressVal = 100;
-              clearInterval(scanInterval);
-              
-              if (scanFG) scanFG.style.width = '100%';
-              if (scanText) scanText.textContent = '스캔 완료!';
-              
-              setTimeout(() => {
-                state = State.PLACING;
-                if (scanHUD) scanHUD.classList.remove('visible');
-                
-                reticle.visible = true;
-                reticle.position.set(0, -0.15, -0.45);
-                reticle.rotation.x = -Math.PI / 2;
-                
-                cityGroup.position.copy(reticle.position);
-                cityGroup.visible = true;
-                window.setStatus('탭하여 도시를 배치하세요!');
-              }, 800);
-            } else {
-              if (scanFG) scanFG.style.width = `${Math.floor(scanProgressVal)}%`;
-              if (scanText) scanText.textContent = `바닥을 스캔하는 중... (${Math.floor(scanProgressVal)}%)`;
-            }
+          if (!hasPrintedOnce) {
+            hasPrintedOnce = true;
+            generateCity(currentConcept);
+          } else {
+            window.setStatus('🎯 공간 고정 완료! 도시가 마커 위에 고정되었습니다.');
           }
-        }, 150);
+        });
 
-        renderer.setAnimationLoop(onFrameSimulator);
-      } else {
-        xrSession.addEventListener('end', onSessionEnd);
-        renderer.setAnimationLoop(onFrameWebXR);
+        markerEl.addEventListener('markerLost', () => {
+          console.log("Hiro Marker Lost!");
+          markerVisible = false;
+          window.setStatus('🔍 마커를 찾아 카메라로 비춰주세요 (자이로 고정 모드)');
+        });
+
+        // Add window event listeners for dragging / interaction
+        window.addEventListener('pointerdown', onPointerDown);
+        window.addEventListener('pointermove', onPointerMove);
+        window.addEventListener('pointerup', onPointerUp);
+        window.addEventListener('wheel', onWheel, { passive: false });
+        window.addEventListener('touchstart', onTouchStart, { passive: false });
+        window.addEventListener('touchmove',  onTouchMove,  { passive: false });
+        window.addEventListener('touchend',   onTouchEnd);
+
+      } catch (err) {
+        console.error("카메라 장치 연동 에러:", err);
+        startBtn.textContent = '📷 AR 카메라 연결 시작';
+        startBtn.disabled = false;
+
+        let errorMsg = '카메라 장치를 시작할 수 없습니다.';
+        if (err.name === 'NotAllowedError') {
+          errorMsg = '카메라 사용 권한이 차단되었습니다. 주소창 왼쪽 자물쇠 버튼을 누르고 카메라 허용 설정을 활성화해주세요.';
+        }
+        alert(errorMsg);
+
+        // Fallback to PC/Desktop Simulator Mode
+        const goSim = confirm('카메라 기기 획득에 실패했습니다. 카메라 없이 가상 시뮬레이션 모드로 시작할까요?');
+        if (goSim) {
+          isARModeActive = false;
+          markerVisible = false;
+          
+          document.getElementById('splash').classList.add('gone');
+          document.getElementById('ar-ui').classList.add('on');
+          
+          // Setup standalone Three.js inside A-Frame
+          const sceneEl = document.createElement('a-scene');
+          sceneEl.setAttribute('style', 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none;');
+          sceneEl.setAttribute('diorama-controller', '');
+          document.body.appendChild(sceneEl);
+
+          panX = 0; panY = 0;
+          analyzeDeskEnvironment();
+
+          window.addEventListener('pointerdown', onPointerDown);
+          window.addEventListener('pointermove', onPointerMove);
+          window.addEventListener('pointerup', onPointerUp);
+          window.addEventListener('wheel', onWheel, { passive: false });
+          window.addEventListener('touchstart', onTouchStart, { passive: false });
+          window.addEventListener('touchmove',  onTouchMove,  { passive: false });
+          window.addEventListener('touchend',   onTouchEnd);
+        }
       }
     };
 
     window.stopAR = function() {
-      if (xrSession) {
-        xrSession.end();
-      } else {
-        onSessionEnd();
+      if (window.arPlaySafeguardInterval) {
+        clearInterval(window.arPlaySafeguardInterval);
       }
-    };
+      
+      isARModeActive = false;
+      markerVisible = false;
+      isPrinting = false;
 
-    function onSessionEnd() {
-      xrSession = null; hitSource = null; refSpace = null;
-      renderer.setAnimationLoop(null);
+      // Remove dynamic scene
+      const scene = document.querySelector('a-scene');
+      if (scene) {
+        scene.parentNode.removeChild(scene);
+      }
+
+      // Clean up AR.js video and canvas elements
+      const arVideos = document.querySelectorAll('body > video:not(#cam-video)');
+      arVideos.forEach(v => {
+        if (v.srcObject) {
+          try {
+            v.srcObject.getTracks().forEach(track => track.stop());
+          } catch(e) {}
+        }
+        v.parentNode.removeChild(v);
+      });
+
+      const arCanvases = document.querySelectorAll('.a-canvas, .arjs-loader');
+      arCanvases.forEach(el => el.parentNode.removeChild(el));
+
+      // Remove event listeners
+      window.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('wheel', onWheel);
+      window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchmove',  onTouchMove);
+      window.removeEventListener('touchend',   onTouchEnd);
+
+      // Restore layout styles
+      document.body.classList.remove('ar-active', 'night-mode');
       
+      const btnNight = document.getElementById('btn-night');
+      if (btnNight) {
+        btnNight.classList.remove('active');
+        btnNight.textContent = '🌙 야간 조명';
+      }
+      
+      const btnRain = document.getElementById('btn-rain');
+      if (btnRain) {
+        btnRain.classList.remove('active');
+        btnRain.textContent = '🌧️ 날씨: 비';
+      }
+
       stopCamera();
-      
+
       document.getElementById('ar-ui').classList.remove('on');
       document.getElementById('splash').classList.remove('gone');
       document.getElementById('scanning-overlay').style.display = 'none';
       document.getElementById('crosshair').classList.remove('show', 'pulse');
-      
-      state = State.IDLE;
-      
-      if (renderer && renderer.domElement) {
-        renderer.domElement.remove();
-        renderer = null;
-      }
-    }
 
-    /* ── Render loops ── */
-    function onFrameWebXR(time, frame) {
-      if (!frame) return;
-      const hits = frame.getHitTestResults(hitSource);
+      const startBtn = document.getElementById('btn-start');
+      startBtn.textContent = '📷 AR 카메라 연결 시작';
+      startBtn.disabled = false;
+    };
 
-      updateRain();
-      updateWobble();
-
-      if (state === State.PLACED) {
-        if (holdActive) {
-          const elapsed = (performance.now() - holdStart) / 1000;
-          const pct = Math.min(elapsed / 1.5, 1);
-          const ring = document.getElementById('hold-fg');
-          if (ring) ring.style.strokeDashoffset = 188 * (1 - pct);
-          if (pct >= 1) resetPlacement();
-        }
-        renderer.render(scene, camera);
+    /* ── Geolocation Weather Auto Fetch ── */
+    async function autoFetchWeather() {
+      if (!navigator.geolocation) {
+        console.warn("Geolocation을 지원하지 않는 브라우저입니다.");
         return;
       }
-
-      if (hits.length > 0) {
-        const pose = hits[0].getPose(refSpace);
-        if (pose) {
-          reticle.visible = true;
-          reticle.matrix.fromArray(pose.transform.matrix);
-          reticle.matrixAutoUpdate = false;
-
-          if (state === State.SCANNING) {
-            state = State.PLACING;
-            cityGroup.visible = true;
-            window.setStatus('탭하여 도시를 배치하세요!');
-
-            if (scanInterval) clearInterval(scanInterval);
-            const scanHUD = document.getElementById('scan-progress-container');
-            if (scanHUD) scanHUD.classList.remove('visible');
-            document.getElementById('scanning-overlay').style.display = 'none';
-            document.getElementById('crosshair').classList.remove('show', 'pulse');
-          }
-
-          if (state === State.PLACING) {
-            cityGroup.matrix.copy(reticle.matrix);
-            cityGroup.matrixAutoUpdate = false;
-          }
-        }
-      } else {
-        reticle.visible = false;
-        if (state === State.PLACING) window.setStatus('📍 바닥이나 책상을 비춰주세요...');
-      }
-
-      renderer.render(scene, camera);
-    }
-
-    function onFrameSimulator(time) {
-      updateRain();
-      updateWobble();
-
-      if (state === State.PLACING) {
-        raycaster.setFromCamera(pointer, camera);
-        horizontalPlane.setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, -0.15, 0));
-        if (raycaster.ray.intersectPlane(horizontalPlane, planeIntersection)) {
-          reticle.visible = true;
-          reticle.position.copy(planeIntersection);
-          cityGroup.position.copy(planeIntersection);
-        }
-      }
-
-      if (state === State.PLACED) {
-        if (holdActive) {
-          const elapsed = (performance.now() - holdStart) / 1000;
-          const pct = Math.min(elapsed / 1.5, 1);
-          const ring = document.getElementById('hold-fg');
-          if (ring) ring.style.strokeDashoffset = 188 * (1 - pct);
-          if (pct >= 1) resetPlacement();
-        }
-      }
-
-      renderer.render(scene, camera);
-    }
-
-    function placeCitySimulator() {
-      state = State.PLACED;
-      window.setStatus('도시 배치 완료!');
       
-      document.getElementById('scanning-overlay').style.display = 'none';
-      document.getElementById('crosshair').classList.remove('show', 'pulse');
-      
-      const scanHUD = document.getElementById('scan-progress-container');
-      if (scanHUD) scanHUD.classList.remove('visible');
-      
-      reticle.visible = false;
-      cityGroup.position.copy(reticle.position);
-      cityGroup.rotation.set(0, 0, 0);
-      cityGroup.visible = true;
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          try {
+            const lat = position.coords.latitude;
+            const lon = position.coords.longitude;
+            const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=weather_code,is_day`);
+            const data = await res.json();
+            
+            if (data && data.current) {
+              const code = data.current.weather_code;
+              const isDay = data.current.is_day; // 1 = 낮, 0 = 밤
+              
+              const rainCodes = [51, 53, 55, 61, 63, 65, 80, 81, 82, 95, 96, 99];
+              const isRaining = rainCodes.includes(code);
+              
+              toggleNightMode(isDay === 0);
+              toggleRainMode(isRaining);
 
-      analyzeDeskEnvironment();
-    }
-
-    function resetPlacement() {
-      state = State.PLACING;
-      holdActive = false;
-      cityGroup.visible = false;
-      reticle.visible = true;
-      
-      const ring = document.getElementById('hold-fg');
-      if (ring) ring.style.strokeDashoffset = 188;
-      document.getElementById('hold-ring').style.display = 'none';
-
-      document.getElementById('scanning-overlay').style.display = 'block';
-      document.getElementById('crosshair').classList.add('show', 'pulse');
-
-      window.setStatus('탭하여 도시를 배치하세요!');
-    }
-
-    /* ── Touch Interaction (Slide, Rotate, Scale, Raycast) ── */
-    function handleDown(x, y) {
-      touchStartPos.x = x;
-      touchStartPos.y = y;
-      isDragging = true;
-      
-      if (state === State.PLACED) {
-        pointer.x = (x / window.innerWidth) * 2 - 1;
-        pointer.y = -(y / window.innerHeight) * 2 + 1;
-        
-        // Raycast for wobble click
-        raycaster.setFromCamera(pointer, camera);
-        const intersects = raycaster.intersectObjects(cityContentGroup.children, true);
-        if (intersects.length > 0) {
-          triggerWobble();
-        }
-
-        horizontalPlane.setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 1, 0), cityGroup.position);
-        if (raycaster.ray.intersectPlane(horizontalPlane, planeIntersection)) {
-          dragOffset.copy(cityGroup.position).sub(planeIntersection);
-          initialDioramaPos.copy(cityGroup.position);
-        }
-        
-        holdStart = performance.now();
-        holdActive = true;
-        document.getElementById('hold-ring').style.display = 'block';
-      }
-    }
-
-    function handleMove(x, y) {
-      if (!isDragging) return;
-      
-      pointer.x = (x / window.innerWidth) * 2 - 1;
-      pointer.y = -(y / window.innerHeight) * 2 + 1;
-      
-      const moveDist = Math.hypot(x - touchStartPos.x, y - touchStartPos.y);
-      if (moveDist > 15) {
-        holdActive = false;
-        document.getElementById('hold-ring').style.display = 'none';
-      }
-      
-      if (state === State.PLACED) {
-        raycaster.setFromCamera(pointer, camera);
-        horizontalPlane.setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 1, 0), cityGroup.position);
-        
-        if (raycaster.ray.intersectPlane(horizontalPlane, planeIntersection)) {
-          const targetPos = planeIntersection.clone().add(dragOffset);
-          cityGroup.position.x = targetPos.x;
-          cityGroup.position.z = targetPos.z;
-        }
-      }
-    }
-
-    function handleUp() {
-      isDragging = false;
-      holdActive = false;
-      document.getElementById('hold-ring').style.display = 'none';
-    }
-
-    function onPointerDown(e) {
-      if (e.target.closest('#dashboard') || e.target.id === 'settings-btn-main') return;
-      handleDown(e.clientX, e.clientY);
-      previousTouch = { x: e.clientX, y: e.clientY };
-    }
-
-    function onPointerMove(e) {
-      if (!isDragging) return;
-      const dx = e.clientX - previousTouch.x;
-      
-      if (e.shiftKey || e.buttons === 2) {
-        cityGroup.rotation.y += dx * 0.01;
-        holdActive = false;
-        document.getElementById('hold-ring').style.display = 'none';
-      } else {
-        handleMove(e.clientX, e.clientY);
-      }
-      previousTouch = { x: e.clientX, y: e.clientY };
-    }
-
-    function onPointerUp(e) {
-      if (isDragging) {
-        const moveDist = Math.hypot(e.clientX - touchStartPos.x, e.clientY - touchStartPos.y);
-        if (state === State.PLACING && moveDist < 10) {
-          if (xrSession) {
-            state = State.PLACED;
-            reticle.visible = false;
-            analyzeDeskEnvironment();
-          } else {
-            placeCitySimulator();
-          }
-        }
-        handleUp();
-      }
-    }
-
-    function onWheel(e) {
-      if (state === State.PLACED) {
-        const factor = e.deltaY < 0 ? 1.05 : 0.95;
-        const newScale = Math.max(0.2, Math.min(3.0, cityGroup.scale.x * factor));
-        cityGroup.scale.set(newScale, newScale, newScale);
-      }
-    }
-
-    function onTouchStart(e) {
-      if (e.target.closest('#dashboard') || e.target.id === 'settings-btn-main') return;
-      e.preventDefault();
-      
-      if (e.touches.length === 1) {
-        const t = e.touches[0];
-        handleDown(t.clientX, t.clientY);
-        previousTouch = { x: t.clientX, y: t.clientY };
-      } else if (e.touches.length === 2 && state === State.PLACED) {
-        holdActive = false;
-        document.getElementById('hold-ring').style.display = 'none';
-        
-        const dx = e.touches[0].clientX - e.touches[1].clientX;
-        const dy = e.touches[0].clientY - e.touches[1].clientY;
-        initialPinchDist = Math.hypot(dx, dy);
-        initialScale = cityGroup.scale.x;
-        previousTouch = Math.atan2(dy, dx);
-      }
-    }
-
-    function onTouchMove(e) {
-      e.preventDefault();
-      
-      if (e.touches.length === 1 && previousTouch) {
-        const t = e.touches[0];
-        handleMove(t.clientX, t.clientY);
-        previousTouch = { x: t.clientX, y: t.clientY };
-      } else if (e.touches.length === 2 && state === State.PLACED) {
-        const dx = e.touches[0].clientX - e.touches[1].clientX;
-        const dy = e.touches[0].clientY - e.touches[1].clientY;
-        
-        const currentAngle = Math.atan2(dy, dx);
-        if (previousTouch !== null) {
-          cityGroup.rotation.y += currentAngle - previousTouch;
-        }
-        previousTouch = currentAngle;
-        
-        const dist = Math.hypot(dx, dy);
-        if (initialPinchDist > 0) {
-          const factor = dist / initialPinchDist;
-          const newScale = Math.max(0.2, Math.min(3.0, initialScale * factor));
-          cityGroup.scale.set(newScale, newScale, newScale);
-        }
-      }
-    }
-
-    function onTouchEnd(e) {
-      if (e.touches.length === 0) {
-        if (state === State.PLACING) {
-          const lastTouch = e.changedTouches[0];
-          const dist = Math.hypot(lastTouch.clientX - touchStartPos.x, lastTouch.clientY - touchStartPos.y);
-          if (dist < 15) {
-            if (xrSession) {
-              state = State.PLACED;
-              reticle.visible = false;
-              analyzeDeskEnvironment();
-            } else {
-              placeCitySimulator();
+              window.setStatus(`📡 날씨 연동 완료 (${isRaining ? '비' : '맑음'}, ${isDay ? '낮' : '밤'})`);
             }
+          } catch (err) {
+            console.error("날씨 API 호출 실패:", err);
           }
+        },
+        (geoErr) => {
+          console.warn("위치 정보 획득 실패 (날씨 조회 건너뜀):", geoErr);
         }
-        handleUp();
-        previousTouch = null;
-      }
+      );
     }
 
-    /* ── Dashboard & Settings panel event binding ── */
+    /* ── Dashboard Events ── */
     window.toggleDevPanel = function() {
       const panel = document.getElementById('dev-panel');
       const btn = document.getElementById('settings-btn-main');
@@ -1925,14 +1757,140 @@
     };
 
     window.triggerReprint = function() {
-      if (state === State.PLACED) {
-        start3D3DPrinting();
+      if (cityContentGroup) {
+        generateCity(currentConcept);
       } else {
-        alert('도시를 먼저 화면에 배치해주세요!');
+        alert('도시가 활성화되어 있지 않습니다!');
       }
     };
 
-    /* ── Load Check ── */
+    /* ── Touch Interaction Event Handlers ── */
+    function shouldIgnoreInteraction(target) {
+      return !!target.closest('#dashboard') || 
+             !!target.closest('#btn-start') || 
+             !!target.closest('#inapp-warning') || 
+             !!target.closest('#dev-panel') || 
+             !!target.closest('#settings-btn-main') ||
+             !!target.closest('#splash') ||
+             !!target.closest('#status');
+    }
+
+    function handleDown(x, y) {
+      touchStartPos.x = x;
+      touchStartPos.y = y;
+      isDragging = true;
+      
+      // Raycast test for Wobble Click
+      pointer.x = (x / window.innerWidth) * 2 - 1;
+      pointer.y = -(y / window.innerHeight) * 2 + 1;
+      
+      const sceneEl = document.querySelector('a-scene');
+      if (sceneEl && sceneEl.camera && cityContentGroup) {
+        raycaster.setFromCamera(pointer, sceneEl.camera);
+        const intersects = raycaster.intersectObjects(cityContentGroup.children, true);
+        if (intersects.length > 0) {
+          triggerWobble();
+        }
+      }
+    }
+
+    function handleMove(x, y) {
+      if (!isDragging) return;
+      
+      pointer.x = (x / window.innerWidth) * 2 - 1;
+      pointer.y = -(y / window.innerHeight) * 2 + 1;
+    }
+
+    function handleUp() {
+      isDragging = false;
+    }
+
+    function onPointerDown(e) {
+      if (shouldIgnoreInteraction(e.target)) return;
+      handleDown(e.clientX, e.clientY);
+      previousTouch = { x: e.clientX, y: e.clientY };
+    }
+
+    function onPointerMove(e) {
+      if (!isDragging) return;
+      const dx = e.clientX - previousTouch.x;
+      const dy = e.clientY - previousTouch.y;
+      
+      if (e.shiftKey || e.buttons === 2) {
+        // Drag to rotate diorama
+        yaw += dx * 0.45;
+      } else {
+        // Slide / reposition diorama
+        panX += dx;
+        panY += dy;
+        handleMove(e.clientX, e.clientY);
+      }
+      previousTouch = { x: e.clientX, y: e.clientY };
+    }
+
+    function onPointerUp(e) {
+      handleUp();
+    }
+
+    function onWheel(e) {
+      if (e.target.closest('#dashboard') || e.target.id === 'settings-btn-main') return;
+      const factor = e.deltaY < 0 ? 1.05 : 0.95;
+      zoomScale = Math.max(0.25, Math.min(3.0, zoomScale * factor));
+    }
+
+    function onTouchStart(e) {
+      if (shouldIgnoreInteraction(e.target)) return;
+      e.preventDefault();
+      
+      if (e.touches.length === 1) {
+        const t = e.touches[0];
+        handleDown(t.clientX, t.clientY);
+        previousTouch = { x: t.clientX, y: t.clientY };
+      } else if (e.touches.length === 2) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        initialPinchDist = Math.hypot(dx, dy);
+        initialScale = zoomScale;
+        previousTouch = Math.atan2(dy, dx);
+      }
+    }
+
+    function onTouchMove(e) {
+      e.preventDefault();
+      
+      if (e.touches.length === 1 && previousTouch) {
+        const t = e.touches[0];
+        const dx = t.clientX - previousTouch.x;
+        const dy = t.clientY - previousTouch.y;
+        
+        yaw += dx * 0.45;
+        pitch = Math.max(10, Math.min(85, pitch - dy * 0.45));
+        
+        previousTouch = { x: t.clientX, y: t.clientY };
+      } else if (e.touches.length === 2) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        
+        const currentAngle = Math.atan2(dy, dx);
+        if (previousTouch !== null) {
+          yaw += (currentAngle - previousTouch) * 180 / Math.PI;
+        }
+        previousTouch = currentAngle;
+        
+        const dist = Math.hypot(dx, dy);
+        if (initialPinchDist > 0) {
+          const factor = dist / initialPinchDist;
+          zoomScale = Math.max(0.25, Math.min(3.0, initialScale * factor));
+        }
+      }
+    }
+
+    function onTouchEnd(e) {
+      handleUp();
+      previousTouch = null;
+    }
+
+    /* ── Preload model & Initial Configuration ── */
     window.addEventListener('load', async () => {
       const note = document.getElementById('support-note');
       const startBtn = document.getElementById('btn-start');
@@ -1955,31 +1913,12 @@
       }
 
       if (isIOS) {
+        // Keep Quick Look option as a fallback button for iOS Safari users
         const link = document.getElementById('start-btn-link');
         if (link) {
           link.style.display = 'inline-block';
         }
-
-        note.textContent = '⏳ iOS용 Native AR Quick Look 구성 중...';
-        
-        // Perform initial city generation for iOS preview
-        initThree();
-        generateCity('chaos');
-        await updateUSDZExport();
-        
-        note.textContent = '🍎 iOS Native AR 시작 가능!';
-      } else {
-        if (!navigator.xr) {
-          note.textContent = '✅ PC 환경 확인됨 (시뮬레이터로 가상 테스트)';
-        } else {
-          navigator.xr.isSessionSupported('immersive-ar').then(ok => {
-            if (ok) {
-              note.textContent = '✅ WebXR 지원 기기! 공간에 도시를 투사할 수 있습니다.';
-            } else {
-              note.textContent = '✅ 모바일 환경 확인됨 (시뮬레이터로 가상 테스트)';
-            }
-          });
-        }
+        updateUSDZExport();
       }
       
       // In-app check
