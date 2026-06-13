@@ -6,7 +6,7 @@ const https = require('https');
 
 const PORT = 8080;
 const PUBLIC_DIR = __dirname;
-const CONVO_ID = 'f276a426-5d82-47cd-83b3-33e5899d381d';
+const CONVO_ID = 'ed48a013-a9ec-4591-8268-d917083098bb';
 const ARTIFACT_DIR = `C:/Users/user/.gemini/antigravity-ide/brain/${CONVO_ID}`;
 
 // 1. Simple static file server
