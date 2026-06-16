@@ -886,22 +886,24 @@
       }
       
       // ── Moon overlay (hidden by default): crescent shape ──
-      // Main moon sphere
       const moonSphere = new THREE.Mesh(
         new THREE.SphereGeometry(0.012, 24, 24),
-        new THREE.MeshBasicMaterial({ color: 0xe8e8f0 })
+        new THREE.MeshStandardMaterial({ 
+          color: 0xeeeef4, emissive: 0x667799, emissiveIntensity: 0.4,
+          roughness: 0.8, metalness: 0.0
+        })
       );
       moonSphere.name = 'moonSphere';
       moonSphere.visible = false;
       sunGroup.add(moonSphere);
       
-      // Crescent shadow: dark sphere offset to create crescent
+      // Crescent shadow: slightly larger dark sphere offset to carve crescent
       const moonShadow = new THREE.Mesh(
-        new THREE.SphereGeometry(0.011, 24, 24),
-        new THREE.MeshBasicMaterial({ color: 0x0a0a14 })
+        new THREE.SphereGeometry(0.0115, 24, 24),
+        new THREE.MeshBasicMaterial({ color: 0x000005, transparent: true, opacity: 0.92 })
       );
       moonShadow.name = 'moonShadow';
-      moonShadow.position.set(0.006, 0.003, 0.002);
+      moonShadow.position.set(0.007, 0.003, -0.001);
       moonShadow.visible = false;
       sunGroup.add(moonShadow);
       
@@ -1964,8 +1966,18 @@
       }
 
       reticle.visible = false;
-      cityGroup.position.copy(reticle.position);
-      cityGroup.rotation.set(0, 0, 0);
+
+      // ── KEY: Save reticle's world-space matrix for WebXR anchoring ──
+      // In WebXR mode, store the hit-test pose matrix so the city stays
+      // fixed in world space even as the camera moves around.
+      if (xrSession) {
+        placedMatrix = Array.from(reticle.matrix.elements);
+        cityGroup.matrix.copy(reticle.matrix);
+        cityGroup.matrixAutoUpdate = false;
+      } else {
+        cityGroup.position.copy(reticle.position);
+        cityGroup.rotation.set(0, 0, 0);
+      }
       cityGroup.visible = true;
 
       // Color analysis on placement
