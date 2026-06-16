@@ -2,7 +2,13 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
-  <title>Desk Diorama AR — v2.1</title>
+  <title>Desk Diorama AR</title>
+  <script>
+    // Auto cache-bust: redirect with fresh timestamp so all users always get latest version
+    if (!location.search.includes('_cb=')) {
+      location.replace(location.pathname + '?_cb=' + Date.now() + location.hash);
+    }
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
@@ -1846,6 +1852,7 @@
 
       document.getElementById('splash').classList.add('gone');
       document.getElementById('ar-ui').classList.add('on');
+      document.body.classList.add('ar-active');
 
       const canvas = renderer.domElement;
       canvas.addEventListener('mousedown', onPointerDown);
