@@ -602,6 +602,8 @@
     let xrSession = null, refSpace = null, hitSource = null;
     let reticle, cityGroup, cityContentGroup;
     let placedMatrix = null;
+    let placedPosition = null; // For simulator mode anchoring
+    let placedRotationY = 0;
 
     let webcamVideo = null;
     let webcamStream = null;
@@ -891,32 +893,19 @@
         sunGroup.add(ray);
       }
       
-      // ── Moon overlay (hidden by default): crescent shape ──
+      // ── Moon (hidden by default): glowing silver sphere ──
       const moonSphere = new THREE.Mesh(
         new THREE.SphereGeometry(0.012, 24, 24),
-        new THREE.MeshStandardMaterial({ 
-          color: 0xeeeef4, emissive: 0x667799, emissiveIntensity: 0.4,
-          roughness: 0.8, metalness: 0.0
-        })
+        new THREE.MeshBasicMaterial({ color: 0xeaeaf6 })
       );
       moonSphere.name = 'moonSphere';
       moonSphere.visible = false;
       sunGroup.add(moonSphere);
       
-      // Crescent shadow: slightly larger dark sphere offset to carve crescent
-      const moonShadow = new THREE.Mesh(
-        new THREE.SphereGeometry(0.0115, 24, 24),
-        new THREE.MeshBasicMaterial({ color: 0x000005, transparent: true, opacity: 0.92 })
-      );
-      moonShadow.name = 'moonShadow';
-      moonShadow.position.set(0.007, 0.003, -0.001);
-      moonShadow.visible = false;
-      sunGroup.add(moonShadow);
-      
       // Moon glow: soft blue-white halo
       const moonGlow = new THREE.Mesh(
         new THREE.SphereGeometry(0.018, 16, 16),
-        new THREE.MeshBasicMaterial({ color: 0x8899cc, transparent: true, opacity: 0.15, side: THREE.DoubleSide })
+        new THREE.MeshBasicMaterial({ color: 0x99aadd, transparent: true, opacity: 0.18, side: THREE.DoubleSide })
       );
       moonGlow.name = 'moonGlow';
       moonGlow.visible = false;
@@ -933,19 +922,17 @@
       
       sunMesh.children.forEach(child => {
         if (isNightMode) {
-          // Hide sun parts, show moon parts
           if (child.name === 'sunCore' || child.name === 'sunGlow' || child.name === 'sunRay') {
             child.visible = false;
           }
-          if (child.name === 'moonSphere' || child.name === 'moonShadow' || child.name === 'moonGlow') {
+          if (child.name === 'moonSphere' || child.name === 'moonGlow') {
             child.visible = true;
           }
         } else {
-          // Show sun parts, hide moon parts
           if (child.name === 'sunCore' || child.name === 'sunGlow' || child.name === 'sunRay') {
             child.visible = true;
           }
-          if (child.name === 'moonSphere' || child.name === 'moonShadow' || child.name === 'moonGlow') {
+          if (child.name === 'moonSphere' || child.name === 'moonGlow') {
             child.visible = false;
           }
         }
@@ -1599,6 +1586,12 @@
       }
 
       if (state === State.PLACED) {
+        // Anchor: restore fixed position every frame so city doesn't drift
+        if (placedPosition) {
+          cityGroup.position.copy(placedPosition);
+          cityGroup.rotation.y = placedRotationY;
+        }
+
         if (isPrinting) {
           printProgress += 0.007;
           const printFill = document.getElementById('print-fill');
@@ -1611,7 +1604,6 @@
             const printBar = document.getElementById('print-bar');
             if (printBar) printBar.style.display = 'none';
             window.setStatus('🏙️ 디오라마 배치 완료!');
-            // Removed wobble on print finish
           }
         }
 
@@ -1964,7 +1956,6 @@
 
     function placeCity() {
       state = State.PLACED;
-      window.setStatus('도시 배치 완료!');
 
       const hud = document.getElementById('holographic-hud');
       if (hud) {
@@ -1974,20 +1965,22 @@
 
       reticle.visible = false;
 
-      // ── KEY: Save reticle's world-space matrix for WebXR anchoring ──
-      // In WebXR mode, store the hit-test pose matrix so the city stays
-      // fixed in world space even as the camera moves around.
       if (xrSession) {
+        // WebXR: save hit-test world matrix for per-frame anchoring
         placedMatrix = Array.from(reticle.matrix.elements);
         cityGroup.matrix.copy(reticle.matrix);
         cityGroup.matrixAutoUpdate = false;
+        window.setStatus('🏙️ AR 디오라마 배치 완료! (원래 위치 고정)');
       } else {
+        // Simulator: save position for per-frame anchoring
         cityGroup.position.copy(reticle.position);
         cityGroup.rotation.set(0, 0, 0);
+        placedPosition = cityGroup.position.clone();
+        placedRotationY = 0;
+        window.setStatus('🏙️ 디오라마 배치 완료! (시뮬레이터 모드)');
       }
       cityGroup.visible = true;
 
-      // Color analysis on placement
       analyzeDeskEnvironment();
     }
 
