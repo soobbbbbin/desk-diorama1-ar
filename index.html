@@ -856,18 +856,63 @@
       if (sunMesh) return;
       const sunGroup = new THREE.Group();
       
-      const sphere = new THREE.Mesh(
-        new THREE.SphereGeometry(0.015, 16, 16),
-        new THREE.MeshBasicMaterial({ color: 0xffaa00 })
+      // ── Sun core: bright glowing sphere ──
+      const sunCore = new THREE.Mesh(
+        new THREE.SphereGeometry(0.012, 24, 24),
+        new THREE.MeshBasicMaterial({ color: 0xffcc00 })
       );
-      sunGroup.add(sphere);
+      sunCore.name = 'sunCore';
+      sunGroup.add(sunCore);
       
-      const aura = new THREE.Mesh(
-        new THREE.RingGeometry(0.02, 0.024, 32),
-        new THREE.MeshBasicMaterial({ color: 0xffdd44, side: THREE.DoubleSide, transparent: true, opacity: 0.45 })
+      // ── Sun glow: soft outer halo ──
+      const glowMat = new THREE.MeshBasicMaterial({
+        color: 0xffaa00, transparent: true, opacity: 0.25, side: THREE.DoubleSide
+      });
+      const sunGlow = new THREE.Mesh(new THREE.SphereGeometry(0.02, 16, 16), glowMat);
+      sunGlow.name = 'sunGlow';
+      sunGroup.add(sunGlow);
+      
+      // ── Sun rays: 8 thin elongated spikes ──
+      for (let i = 0; i < 8; i++) {
+        const rayGeo = new THREE.PlaneGeometry(0.002, 0.025);
+        const rayMat = new THREE.MeshBasicMaterial({
+          color: 0xffdd44, transparent: true, opacity: 0.35, side: THREE.DoubleSide
+        });
+        const ray = new THREE.Mesh(rayGeo, rayMat);
+        ray.name = 'sunRay';
+        ray.rotation.z = (Math.PI / 4) * i;
+        ray.position.set(0, 0, 0);
+        sunGroup.add(ray);
+      }
+      
+      // ── Moon overlay (hidden by default): crescent shape ──
+      // Main moon sphere
+      const moonSphere = new THREE.Mesh(
+        new THREE.SphereGeometry(0.012, 24, 24),
+        new THREE.MeshBasicMaterial({ color: 0xe8e8f0 })
       );
-      aura.rotation.x = Math.PI / 4;
-      sunGroup.add(aura);
+      moonSphere.name = 'moonSphere';
+      moonSphere.visible = false;
+      sunGroup.add(moonSphere);
+      
+      // Crescent shadow: dark sphere offset to create crescent
+      const moonShadow = new THREE.Mesh(
+        new THREE.SphereGeometry(0.011, 24, 24),
+        new THREE.MeshBasicMaterial({ color: 0x0a0a14 })
+      );
+      moonShadow.name = 'moonShadow';
+      moonShadow.position.set(0.006, 0.003, 0.002);
+      moonShadow.visible = false;
+      sunGroup.add(moonShadow);
+      
+      // Moon glow: soft blue-white halo
+      const moonGlow = new THREE.Mesh(
+        new THREE.SphereGeometry(0.018, 16, 16),
+        new THREE.MeshBasicMaterial({ color: 0x8899cc, transparent: true, opacity: 0.15, side: THREE.DoubleSide })
+      );
+      moonGlow.name = 'moonGlow';
+      moonGlow.visible = false;
+      sunGroup.add(moonGlow);
       
       sunMesh = sunGroup;
       sunMesh.position.set(0.08, 0.22, 0.08);
@@ -876,18 +921,27 @@
     }
 
     function updateSunMoonVisual() {
-      if (!sunMesh || sunMesh.children.length < 2) return;
-      const sphere = sunMesh.children[0];
-      const aura = sunMesh.children[1];
-      if (isNightMode) {
-        sphere.material.color.setHex(0xddf0ff);
-        aura.material.color.setHex(0x88ccff);
-        aura.material.opacity = 0.3;
-      } else {
-        sphere.material.color.setHex(0xffaa00);
-        aura.material.color.setHex(0xffdd44);
-        aura.material.opacity = 0.45;
-      }
+      if (!sunMesh) return;
+      
+      sunMesh.children.forEach(child => {
+        if (isNightMode) {
+          // Hide sun parts, show moon parts
+          if (child.name === 'sunCore' || child.name === 'sunGlow' || child.name === 'sunRay') {
+            child.visible = false;
+          }
+          if (child.name === 'moonSphere' || child.name === 'moonShadow' || child.name === 'moonGlow') {
+            child.visible = true;
+          }
+        } else {
+          // Show sun parts, hide moon parts
+          if (child.name === 'sunCore' || child.name === 'sunGlow' || child.name === 'sunRay') {
+            child.visible = true;
+          }
+          if (child.name === 'moonSphere' || child.name === 'moonShadow' || child.name === 'moonGlow') {
+            child.visible = false;
+          }
+        }
+      });
     }
 
     function applyWeather() {
