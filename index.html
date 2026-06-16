@@ -448,12 +448,17 @@
       stroke-dasharray: 188; stroke-dashoffset: 188;
       transition: stroke-dashoffset .05s linear; stroke-linecap: round;
     }
+
+    /* Developer/User mode: hide settings button unless debug */
+    body:not(.debug-mode) #settings-btn-main { display: none !important; }
+    #debug-tap-zone { position: fixed; bottom: 0; right: 0; width: 50px; height: 50px; z-index: 100; }
   </style>
 </head>
 <body>
 
-  <!-- ⚙️ 관리자 설정 패널 오픈 버튼 -->
+  <!-- ⚙️ 관리자 설정 패널 오픈 버튼 (개발자 모드에서만 표시) -->
   <button id="settings-btn-main" onclick="toggleDevPanel()">⚙️</button>
+  <div id="debug-tap-zone"></div>
 
   <!-- 스플래시 화면 -->
   <div id="splash">
@@ -505,6 +510,7 @@
       <div class="hud-title-container">
         <div class="hud-archetype" id="hud-archetype-name">환경 분석 대기 중...</div>
         <div class="hud-stats" id="hud-city-stats">GRID: 5x5 | STANDBY</div>
+        <div id="hud-desc-ko" style="font-size:11px;color:rgba(209,213,219,0.85);margin-top:4px;text-align:center;font-style:italic;"></div>
       </div>
 
       <!-- 빌드 프로세스 진행바 -->
@@ -525,7 +531,7 @@
           <button class="arch-btn harmony" id="arch-harmony" onclick="switchArchetype('harmony')">Minimal</button>
           <button class="arch-btn flow" id="arch-flow" onclick="switchArchetype('flow')">Dynamic</button>
           <button class="arch-btn ruins" id="arch-ruins" onclick="switchArchetype('ruins')">Ruins</button>
-          <button class="arch-btn blender" id="arch-blender" onclick="switchArchetype('blender')">🏺 Blender</button>
+
         </div>
 
         <!-- 날씨 수동 토글 -->
@@ -612,7 +618,7 @@
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
 
-    let holdStart = 0, holdActive = false;
+    let holdStart = 0, holdActive = false, holdPending = false;
 
     // Lighting & Environment
     let ambientLight, dirLight;
@@ -633,11 +639,11 @@
     const spawnedBuildings = [];
 
     const ARCH_DETAILS = {
-      chaos: { name: "Chaos Neon District", desc: "GRID: 5x5 | NEON HIGH" },
-      harmony: { name: "Minimal Harmony City", desc: "GRID: 5x5 | ECO CALM" },
-      flow: { name: "Dynamic Flow City", desc: "GRID: 5x5 | STEEL DYNAMIC" },
-      ruins: { name: "Silent Ruins City", desc: "GRID: 5x5 | RUINS SILENT" },
-      blender: { name: "Blender Custom Model", desc: "GRID: 3D MODEL" }
+      chaos:   { name: "Chaos Neon District",  desc: "GRID: 5x5 | NEON HIGH",     descKo: "혼돈의 네온 도시 — 무질서 속의 에너지" },
+      harmony: { name: "Minimal Harmony City", desc: "GRID: 5x5 | ECO CALM",      descKo: "미니멀 하모니 — 자연과 조화로운 도시" },
+      flow:    { name: "Dynamic Flow City",    desc: "GRID: 5x5 | STEEL DYNAMIC", descKo: "다이나믹 플로우 — 첨단 기술의 흐름" },
+      ruins:   { name: "Silent Ruins City",    desc: "GRID: 5x5 | RUINS SILENT",  descKo: "고요한 폐허 — 시간이 멈춘 도시" },
+      blender: { name: "Blender Custom Model", desc: "GRID: 3D MODEL",            descKo: "블렌더 커스텀 모델" }
     };
 
     window.setStatus = function(msg) {
@@ -1025,6 +1031,8 @@
       if (hudName) hudName.textContent = ARCH_DETAILS[key].name;
       const hudStats = document.getElementById('hud-city-stats');
       if (hudStats) hudStats.textContent = ARCH_DETAILS[key].desc;
+      const hudDescKo = document.getElementById('hud-desc-ko');
+      if (hudDescKo) hudDescKo.textContent = ARCH_DETAILS[key].descKo || '';
 
       document.querySelectorAll('#dev-panel .arch-btn').forEach(btn => {
         btn.classList.remove('active', 'chaos', 'harmony', 'flow', 'ruins', 'blender');
@@ -1316,9 +1324,8 @@
     }
 
     function easeOutBack(x) {
-      const c1 = 1.2;
-      const c3 = c1 + 1;
-      return x === 0 ? 0 : x === 1 ? 1 : 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2);
+      // Smooth ease-out cubic without bounce/overshoot
+      return 1 - Math.pow(1 - x, 3);
     }
 
     function start3DPrinting() {
@@ -1452,7 +1459,14 @@
           }
         }
 
-        // Hold touch timer for reset
+        // Hold touch timer for reset (0.4s activation delay)
+        if (holdPending && !holdActive) {
+          if ((performance.now() - holdStart) / 1000 >= 0.4) {
+            holdActive = true;
+            holdStart = performance.now();
+            document.getElementById('hold-ring').style.display = 'block';
+          }
+        }
         if (holdActive) {
           const elapsed = (performance.now() - holdStart) / 1000;
           const pct = Math.min(elapsed / 1.5, 1);
@@ -1536,6 +1550,13 @@
           }
         }
 
+        if (holdPending && !holdActive) {
+          if ((performance.now() - holdStart) / 1000 >= 0.4) {
+            holdActive = true;
+            holdStart = performance.now();
+            document.getElementById('hold-ring').style.display = 'block';
+          }
+        }
         if (holdActive) {
           const elapsed = (performance.now() - holdStart) / 1000;
           const pct = Math.min(elapsed / 1.5, 1);
@@ -1597,8 +1618,8 @@
         }
         
         holdStart = performance.now();
-        holdActive = true;
-        document.getElementById('hold-ring').style.display = 'block';
+        holdPending = true;
+        holdActive = false;
       }
     }
 
@@ -1608,6 +1629,7 @@
       const moveDist = Math.hypot(x - touchStartPos.x, y - touchStartPos.y);
       if (moveDist > 15) {
         holdActive = false;
+        holdPending = false;
         document.getElementById('hold-ring').style.display = 'none';
       }
       
@@ -1629,6 +1651,7 @@
     function handleUp() {
       isDragging = false;
       holdActive = false;
+      holdPending = false;
       document.getElementById('hold-ring').style.display = 'none';
     }
 
@@ -1777,6 +1800,7 @@
       if (useXR) {
         isSimulator = false;
         try {
+          renderer.xr.enabled = true;
           xrSession = await navigator.xr.requestSession('immersive-ar', {
             requiredFeatures: ['hit-test'],
             optionalFeatures: ['dom-overlay'],
@@ -2143,6 +2167,22 @@
       if (ua.includes('kakaotalk') || ua.includes('line') || ua.includes('instagram') || ua.includes('fb') || ua.includes('everytime')) {
         document.getElementById('inapp-warning').style.display = 'block';
       }
+
+      // Debug mode: hidden 5-tap on bottom-right corner
+      const _urlParams = new URLSearchParams(window.location.search);
+      let _debugOn = _urlParams.get('debug') === 'true';
+      let _tapN = 0, _tapT = null;
+      function _applyDebug() {
+        if (_debugOn) document.body.classList.add('debug-mode');
+        else { document.body.classList.remove('debug-mode'); const dp = document.getElementById('dev-panel'); if (dp) dp.style.display = 'none'; }
+      }
+      _applyDebug();
+      const _tz = document.getElementById('debug-tap-zone');
+      if (_tz) _tz.addEventListener('click', (e) => {
+        e.stopPropagation(); _tapN++; clearTimeout(_tapT);
+        _tapT = setTimeout(() => { _tapN = 0; }, 2000);
+        if (_tapN >= 5) { _tapN = 0; _debugOn = !_debugOn; _applyDebug(); }
+      });
     });
 
   </script>
