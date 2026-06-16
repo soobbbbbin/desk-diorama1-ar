@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
-  <title>Desk Diorama AR — Premium WebGL</title>
+  <title>Desk Diorama AR — v2.1</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
@@ -1512,7 +1512,7 @@
             const printBar = document.getElementById('print-bar');
             if (printBar) printBar.style.display = 'none';
             window.setStatus('🏙️ 디오라마 생성 및 배치 완료!');
-            triggerWobble(); // Finish with wobble feedback
+            // Removed wobble on print finish (was causing bounce)
           }
         }
 
@@ -1603,7 +1603,7 @@
             const printBar = document.getElementById('print-bar');
             if (printBar) printBar.style.display = 'none';
             window.setStatus('🏙️ 디오라마 배치 완료!');
-            triggerWobble();
+            // Removed wobble on print finish
           }
         }
 
