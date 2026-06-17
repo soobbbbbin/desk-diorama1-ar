@@ -1274,7 +1274,8 @@
           roofMesh.receiveShadow = true;
           cellGroup.add(roofMesh);
 
-          // 4. Optional thin Antenna
+          // 4. Optional thin Antenna (Removed as it looked like a candle)
+          /*
           if (h > 0.07 && randomSeed() > 0.4) {
             const antH = 0.015;
             const antGeo = new THREE.CylinderGeometry(0.00075, 0.00075, antH, 6);
@@ -1292,6 +1293,7 @@
             antMesh.receiveShadow = true;
             cellGroup.add(antMesh);
           }
+          */
 
           // 5. PointLight for Cyberpunk Neon glow (Chaos & Flow archetypes)
           if ((concept === 'chaos' || concept === 'flow') && h > 0.05) {
