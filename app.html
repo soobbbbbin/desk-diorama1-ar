@@ -445,18 +445,7 @@
     #scan-status-text { color: #fff; font-size: 0.85rem; font-weight: bold; }
     #scan-sub-text { color: rgba(255,255,255,0.5); font-size: 0.72rem; }
 
-    /* Hold ring */
-    #hold-ring {
-      position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
-      width: 70px; height: 70px; display: none; z-index: 20;
-    }
-    #hold-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
-    #hold-ring circle.bg { fill: none; stroke: rgba(255,255,255,0.15); stroke-width: 5; }
-    #hold-ring circle.fg {
-      fill: none; stroke: #00d4ff; stroke-width: 5;
-      stroke-dasharray: 188; stroke-dashoffset: 188;
-      transition: stroke-dashoffset .05s linear; stroke-linecap: round;
-    }
+    /* Hold ring removed */
 
     /* Developer/User mode: hide settings button unless debug */
     body:not(.debug-mode) #settings-btn-main { display: none !important; }
@@ -570,13 +559,7 @@
     </div>
   </div>
 
-  <!-- Hold ring for reset placement -->
-  <div id="hold-ring">
-    <svg viewBox="0 0 60 60">
-      <circle class="bg" cx="30" cy="30" r="27"/>
-      <circle class="fg" id="hold-fg" cx="30" cy="30" r="27"/>
-    </svg>
-  </div>
+  <!-- Hold ring removed -->
 
   <!-- ══════════════════════════════
      Pure Three.js WebXR & Simulator Logic
@@ -629,7 +612,9 @@
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
 
-    let holdStart = 0, holdActive = false, holdPending = false;
+    let holdStart = 0, holdPending = false;
+    let targetLift = 0;
+    let currentLift = 0;
 
     // Lighting & Environment
     let ambientLight, dirLight;
@@ -753,6 +738,8 @@
       dirLight.castShadow = true;
       dirLight.shadow.mapSize.width = 1024;
       dirLight.shadow.mapSize.height = 1024;
+      dirLight.shadow.bias = -0.001;
+      dirLight.shadow.normalBias = 0.02;
       scene.add(dirLight);
 
       // Placement reticle ring
@@ -1121,16 +1108,16 @@
       let baseMat = new THREE.MeshStandardMaterial({ color: baseColor, roughness: 0.7, metalness: 0.1 });
 
       if (concept === 'chaos') {
-        baseColor = 0x110d1d;
+        baseColor = 0x3a3a40;
         baseMat = new THREE.MeshStandardMaterial({ color: baseColor, roughness: 0.3, metalness: 0.8 });
       } else if (concept === 'harmony') {
-        baseColor = 0xf3f4f6;
+        baseColor = 0xe5e7eb;
         baseMat = new THREE.MeshStandardMaterial({ color: baseColor, roughness: 0.8, metalness: 0.05 });
       } else if (concept === 'flow') {
-        baseColor = 0x1e293b;
+        baseColor = 0x64748b;
         baseMat = new THREE.MeshStandardMaterial({ color: baseColor, roughness: 0.2, metalness: 0.9 });
       } else if (concept === 'ruins') {
-        baseColor = 0x3d352e;
+        baseColor = 0x78716c;
         baseMat = new THREE.MeshStandardMaterial({ color: baseColor, roughness: 0.95, metalness: 0.1 });
       }
 
@@ -1210,28 +1197,28 @@
           const isParity = (x + z) % 2 === 0;
 
           if (concept === 'chaos') {
-            bodyColor = 0x110d1d;
+            bodyColor = 0x4a4a52;
             bodyMetalness = 0.9;
             bodyRoughness = 0.15;
             roofColor = 0xff007f;
             glassColor = isParity ? 0xff007f : 0x00ffff;
             antColor = isParity ? 0xff007f : 0x00ffff;
           } else if (concept === 'harmony') {
-            bodyColor = 0xf3f4f6;
+            bodyColor = 0xe5e7eb;
             bodyMetalness = 0.05;
             bodyRoughness = 0.85;
             roofColor = 0x54a065;
             glassColor = 0xf59e0b;
             antColor = 0x9ca3af;
           } else if (concept === 'flow') {
-            bodyColor = 0x1e293b;
+            bodyColor = 0x475569;
             bodyMetalness = 0.8;
             bodyRoughness = 0.25;
             roofColor = 0x00d4ff;
             glassColor = 0x00d4ff;
             antColor = 0x007cff;
           } else if (concept === 'ruins') {
-            bodyColor = 0x2b2520;
+            bodyColor = 0x57534e;
             bodyMetalness = 0.1;
             bodyRoughness = 0.95;
             roofColor = 0x4a473d;
@@ -1511,20 +1498,33 @@
           }
         }
 
-        // Hold touch timer for reset (0.4s activation delay)
-        if (holdPending && !holdActive) {
-          if ((performance.now() - holdStart) / 1000 >= 0.4) {
-            holdActive = true;
-            holdStart = performance.now();
-            document.getElementById('hold-ring').style.display = 'block';
+        // Lift and Drag interaction frame logic
+        if (holdPending && targetLift === 0) {
+          if ((performance.now() - holdStart) >= 300) {
+            targetLift = 0.05;
+            holdPending = false;
+            if (navigator.vibrate) navigator.vibrate(50);
+            window.setStatus('✨ 이동 모드: 드래그하여 위치를 옮기세요');
           }
         }
-        if (holdActive) {
-          const elapsed = (performance.now() - holdStart) / 1000;
-          const pct = Math.min(elapsed / 1.5, 1);
-          const ring = document.getElementById('hold-fg');
-          if (ring) ring.style.strokeDashoffset = 188 * (1 - pct);
-          if (pct >= 1) resetPlacement();
+        
+        currentLift += (targetLift - currentLift) * 0.2;
+        
+        if (targetLift > 0 && xrSession && reticle.visible) {
+          // Snap to reticle if dragging in AR
+          placedMatrix = Array.from(reticle.matrix.elements);
+        }
+        
+        if (placedMatrix) {
+          cityGroup.matrix.fromArray(placedMatrix);
+          const elements = cityGroup.matrix.elements;
+          elements[13] += currentLift; // Apply Y lift
+          cityGroup.matrixAutoUpdate = false;
+        } else if (placedPosition) {
+          cityGroup.position.x = placedPosition.x;
+          cityGroup.position.y = placedPosition.y + currentLift;
+          cityGroup.position.z = placedPosition.z;
+          cityGroup.rotation.y = placedRotationY;
         }
 
         renderer.render(scene, camera);
@@ -1607,19 +1607,22 @@
           }
         }
 
-        if (holdPending && !holdActive) {
-          if ((performance.now() - holdStart) / 1000 >= 0.4) {
-            holdActive = true;
-            holdStart = performance.now();
-            document.getElementById('hold-ring').style.display = 'block';
+        if (holdPending && targetLift === 0) {
+          if ((performance.now() - holdStart) >= 300) {
+            targetLift = 0.05;
+            holdPending = false;
+            if (navigator.vibrate) navigator.vibrate(50);
+            window.setStatus('✨ 이동 모드: 드래그하여 위치를 옮기세요');
           }
         }
-        if (holdActive) {
-          const elapsed = (performance.now() - holdStart) / 1000;
-          const pct = Math.min(elapsed / 1.5, 1);
-          const ring = document.getElementById('hold-fg');
-          if (ring) ring.style.strokeDashoffset = 188 * (1 - pct);
-          if (pct >= 1) resetPlacement();
+        
+        currentLift += (targetLift - currentLift) * 0.2;
+        
+        if (placedPosition) {
+          cityGroup.position.x = placedPosition.x;
+          cityGroup.position.y = placedPosition.y + currentLift;
+          cityGroup.position.z = placedPosition.z;
+          cityGroup.rotation.y = placedRotationY;
         }
       }
 
@@ -1658,25 +1661,21 @@
       if (state === State.PLACED) {
         pointer.x = (x / window.innerWidth) * 2 - 1;
         pointer.y = -(y / window.innerHeight) * 2 + 1;
-        
         raycaster.setFromCamera(pointer, camera);
         
-        // Wobble only if clicked a building mesh
         const intersects = raycaster.intersectObjects(cityContentGroup.children, true);
         if (intersects.length > 0) {
-          triggerWobble();
-        } else {
-          // Slide diorama if clicked on empty table space
+          holdPending = true;
+          holdStart = performance.now();
+          initialDioramaPos.copy(cityGroup.position);
+          
           horizontalPlane.setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 1, 0), cityGroup.position);
           if (raycaster.ray.intersectPlane(horizontalPlane, planeIntersection)) {
             dragOffset.copy(cityGroup.position).sub(planeIntersection);
-            initialDioramaPos.copy(cityGroup.position);
           }
+        } else {
+          holdPending = false;
         }
-        
-        holdStart = performance.now();
-        holdPending = true;
-        holdActive = false;
       }
     }
 
@@ -1684,32 +1683,47 @@
       if (!isDragging) return;
       
       const moveDist = Math.hypot(x - touchStartPos.x, y - touchStartPos.y);
-      if (moveDist > 15) {
-        holdActive = false;
-        holdPending = false;
-        document.getElementById('hold-ring').style.display = 'none';
-      }
       
       if (state === State.PLACED) {
-        pointer.x = (x / window.innerWidth) * 2 - 1;
-        pointer.y = -(y / window.innerHeight) * 2 + 1;
+        if (holdPending && moveDist > 10) {
+          holdPending = false;
+        }
         
-        raycaster.setFromCamera(pointer, camera);
-        horizontalPlane.setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 1, 0), cityGroup.position);
-        
-        if (raycaster.ray.intersectPlane(horizontalPlane, planeIntersection)) {
-          const targetPos = planeIntersection.clone().add(dragOffset);
-          cityGroup.position.x = targetPos.x;
-          cityGroup.position.z = targetPos.z;
+        if (targetLift > 0) {
+          pointer.x = (x / window.innerWidth) * 2 - 1;
+          pointer.y = -(y / window.innerHeight) * 2 + 1;
+          raycaster.setFromCamera(pointer, camera);
+          
+          horizontalPlane.setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, initialDioramaPos.y, 0));
+          if (raycaster.ray.intersectPlane(horizontalPlane, planeIntersection)) {
+            const targetPos = planeIntersection.clone().add(dragOffset);
+            if (placedPosition) {
+              placedPosition.x = targetPos.x;
+              placedPosition.z = targetPos.z;
+            }
+          }
         }
       }
     }
 
-    function handleUp() {
+    function handleUp(x, y) {
       isDragging = false;
-      holdActive = false;
-      holdPending = false;
-      document.getElementById('hold-ring').style.display = 'none';
+      const moveDist = Math.hypot(x - touchStartPos.x, y - touchStartPos.y);
+      
+      if (state === State.PLACED) {
+        if (holdPending && moveDist < 10) {
+          triggerWobble();
+          if (navigator.vibrate) navigator.vibrate(30);
+        }
+        
+        holdPending = false;
+        
+        if (targetLift > 0) {
+          targetLift = 0;
+          if (navigator.vibrate) navigator.vibrate(20);
+          window.setStatus('🏙️ 디오라마 위치 이동 완료!');
+        }
+      }
     }
 
     function onPointerDown(e) {
@@ -1720,22 +1734,20 @@
 
     function onPointerMove(e) {
       if (!isDragging) return;
-      
       const dx = e.clientX - previousTouch.x;
-      const dy = e.clientY - previousTouch.y;
       
-      if (!isARModeActive()) {
-        // Drag to orbit / rotate camera in simulator
+      if (!isARModeActive() && targetLift === 0) {
         if (e.shiftKey || e.buttons === 2) {
           cityGroup.rotation.y += dx * 0.01;
-          holdActive = false;
-          document.getElementById('hold-ring').style.display = 'none';
+          placedRotationY = cityGroup.rotation.y;
         } else {
           handleMove(e.clientX, e.clientY);
         }
-      } else {
-        // In WebXR mode, rotate diorama around local Y axis
+      } else if (isARModeActive() && targetLift === 0) {
         cityGroup.rotation.y += dx * 0.01;
+        if (placedMatrix) placedRotationY = cityGroup.rotation.y; 
+      } else {
+        handleMove(e.clientX, e.clientY);
       }
       previousTouch = { x: e.clientX, y: e.clientY };
     }
@@ -1746,7 +1758,7 @@
         if (state === State.PLACING && moveDist < 10) {
           placeCity();
         }
-        handleUp();
+        handleUp(e.clientX, e.clientY);
       }
     }
 
@@ -1813,8 +1825,11 @@
           if (dist < 15) {
             placeCity();
           }
+        } else if (state === State.PLACED) {
+          const lastTouch = e.changedTouches[0];
+          handleUp(lastTouch.clientX, lastTouch.clientY);
         }
-        handleUp();
+        isDragging = false;
         previousTouch = null;
       }
     }
